@@ -32,9 +32,12 @@ const doctorProfiles = {
   }
 };
 
-// Ensure required directories
-['uploads', 'models', 'public'].forEach(dir => {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+// Ensure required directories - Use /tmp for Vercel compatibility
+['uploads', 'models'].forEach(dir => {
+  const dirPath = `/tmp/${dir}`;
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
 });
 
 // Middleware
@@ -48,9 +51,9 @@ app.use(session({
   cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
 }));
 
-// Multer setup
+// Multer setup - Updated to use /tmp directory
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
+  destination: (req, file, cb) => cb(null, '/tmp/uploads/'),
   filename: (req, file, cb) =>
     cb(null, `${file.fieldname}-${Date.now()}${path.extname(file.originalname)}`)
 });
@@ -65,15 +68,21 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024, files: 1 }
 });
 
-// Load ONNX model
+// Load ONNX model - Updated path for Vercel
 let sessionONNX;
 const modelPath = path.join(__dirname, 'models', 'eyelid_anemia_model.onnx');
+const tmpModelPath = '/tmp/models/eyelid_anemia_model.onnx';
+
 async function loadModel() {
+  // Try to load from the original location first
   if (fs.existsSync(modelPath)) {
     sessionONNX = await ort.InferenceSession.create(modelPath);
-    console.log('✅ Model loaded');
+    console.log('✅ Model loaded from original path');
+  } else if (fs.existsSync(tmpModelPath)) {
+    sessionONNX = await ort.InferenceSession.create(tmpModelPath);
+    console.log('✅ Model loaded from tmp path');
   } else {
-    console.warn('⚠️ Model not found');
+    console.warn('⚠️ Model not found in either location');
   }
 }
 loadModel();
