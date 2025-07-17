@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Malaria AI Detection</title>
+<style>
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #f4f7fa;
+    color: #333;
+    margin: 0;
+    min-height: 100vh;
+    padding-top: 70px;
+  }
+  nav {
+    background-color: #2f855a;
+    position: fixed;
+    top: 0;
+    width: 100%;
+    height: 70px;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    z-index: 1000;
+    justify-content: space-between;
+  }
+  nav .logo {
+    font-weight: 700;
+    color: white;
+    font-size: 1.5rem;
+    user-select: none;
+  }
+  nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    gap: 24px;
+  }
+  nav ul li a {
+    color: white;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 1rem;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: background-color 0.3s ease;
+    cursor: pointer;
+  }
+  nav ul li a:hover {
+    background-color: #48bb78;
+  }
+  nav ul li a.active {
+    background-color: #38a169;
+  }
+  .container {
+    background: white;
+    max-width: 420px;
+    width: 100%;
+    margin: 40px auto 60px;
+    padding: 30px 40px;
+    border-radius: 12px;
+    box-shadow: 0 14px 40px rgba(0,0,0,0.1);
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  h1 {
+    margin-bottom: 24px;
+    font-weight: 700;
+    color: #2f855a;
+  }
+  form {
+    margin-bottom: 20px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  input[type="file"] {
+    margin-bottom: 20px;
+    max-width: 300px;
+    cursor: pointer;
+    border: 2px dashed #cbd5e0;
+    border-radius: 8px;
+    padding: 10px;
+    transition: border-color 0.3s ease;
+  }
+  input[type="file"]:hover {
+    border-color: #48bb78;
+  }
+  button {
+    max-width: 150px;
+    width: 100%;
+    background: #48bb78;
+    color: white;
+    border: none;
+    padding: 14px 32px;
+    font-size: 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    box-shadow: 0 6px 12px rgba(72,187,120,0.4);
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+  }
+  button:hover {
+    background: #38a169;
+    box-shadow: 0 8px 18px rgba(56,161,105,0.6);
+  }
+  #result {
+    margin-top: 24px;
+    font-size: 1.2rem;
+    min-height: 1.5em;
+    font-weight: 600;
+    color: #2d3748;
+    user-select: text;
+  }
+  #result.detecting::after {
+    content: '';
+    display: inline-block;
+    margin-left: 8px;
+    width: 16px;
+    height: 16px;
+    border: 3px solid #48bb78;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    vertical-align: middle;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  @media (max-width: 480px) {
+    .container {
+      padding: 20px 24px;
+      margin: 20px auto 40px;
+    }
+    button {
+      width: 100%;
+      padding: 14px 0;
+    }
+    nav {
+      padding: 0 12px;
+    }
+    nav ul {
+      gap: 16px;
+    }
+  }
+</style>
+</head>
+<body>
+  <nav>
+    <div class="logo">Malaria AI Detection</div>
+    <ul>
+      <li><a href="#" class="active">Home</a></li>
+      <li><a href="#">About</a></li>
+      <li><a href="#">Contact Us</a></li>
+    </ul>
+  </nav>
+
+  <div class="container">
+    <h1>Upload Eyelid Image</h1>
+    <form id="uploadForm">
+      <input type="file" id="eyelid" name="eyelid" accept="image/*" required />
+      <button type="submit">Detect</button>
+    </form>
+    <h2 id="result"></h2>
+  </div>
+
+  <script>
+    const form = document.getElementById('uploadForm');
+    const resultEl = document.getElementById('result');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const fileInput = document.getElementById('eyelid');
+      if (!fileInput.files.length) {
+        alert('Please select an image.');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('eyelid', fileInput.files[0]);
+
+      resultEl.textContent = 'Detecting...';
+      resultEl.classList.add('detecting');
+      resultEl.style.color = '#2f855a';
+
+      try {
+        const response = await fetch('/predict', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await response.json();
+
+        resultEl.classList.remove('detecting');
+
+        if (data.error) {
+          resultEl.textContent = 'Error: ' + data.error;
+          resultEl.style.color = '#e53e3e';
+        } else {
+          resultEl.textContent = `Prediction: ${data.prediction} (Confidence: ${data.confidencePercentage}%)`;
+          resultEl.style.color = '#2f855a';
+
+          if (data.redirectTo) {
+            // Wait 1.5 seconds, then redirect to symptoms page
+            setTimeout(() => {
+              window.location.href = data.redirectTo;
+            }, 1500);
+          }
+        }
+      } catch (err) {
+        resultEl.classList.remove('detecting');
+        resultEl.textContent = 'Error during detection.';
+        resultEl.style.color = '#e53e3e';
+      }
+    });
+  </script>
+</body>
+</html>

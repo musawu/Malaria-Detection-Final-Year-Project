@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Doctor Dashboard</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f3fdf4;
+      padding: 30px;
+    }
+
+    h2 {
+      color: #2e7d32;
+      margin-bottom: 20px;
+    }
+
+    .assessment {
+      background: white;
+      padding: 20px;
+      border-radius: 15px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+      margin-bottom: 20px;
+      border-left: 6px solid #4caf50;
+    }
+
+    .assessment h4 {
+      margin-bottom: 10px;
+      color: #333;
+    }
+
+    .symptoms {
+      margin-top: 10px;
+    }
+
+    .symptoms span {
+      display: inline-block;
+      margin-right: 8px;
+      padding: 5px 10px;
+      background: #e8f5e9;
+      color: #2e7d32;
+      border-radius: 20px;
+      font-size: 0.9em;
+    }
+
+    .prediction {
+      margin-top: 12px;
+      font-weight: bold;
+      color: #d32f2f;
+    }
+  </style>
+</head>
+<body>
+  <h2>Welcome, Dr. <span id="doctorName">Loading...</span></h2>
+  <div id="assessmentContainer">
+    <p>Loading assessments...</p>
+  </div>
+
+  <script>
+    // Simulate login (in real app, get this from token/session)
+    const doctorId = 2; // For example: Dr. John Otieno
+    const doctorNames = {
+      1: "Alice Mwangi",
+      2: "John Otieno",
+      3: "Grace Njeri",
+      4: "Michael Kamau",
+      5: "Esther Wanjiku",
+      6: "David Kariuki"
+    };
+
+    document.getElementById("doctorName").textContent = doctorNames[doctorId];
+
+    async function loadAssessments() {
+      const container = document.getElementById("assessmentContainer");
+
+      try {
+        const response = await fetch(`/api/getDoctorAssessments?doctorId=${doctorId}`);
+        const data = await response.json();
+
+        if (!data.length) {
+          container.innerHTML = "<p>No assessments yet.</p>";
+          return;
+        }
+
+        container.innerHTML = "";
+        data.forEach((item, index) => {
+          const card = document.createElement("div");
+          card.className = "assessment";
+          card.innerHTML = `
+            <h4>Patient #${index + 1}</h4>
+            <div class="symptoms">
+              ${Object.entries(item.symptoms)
+                .filter(([k, v]) => v === 'yes')
+                .map(([k]) => `<span>${k}</span>`).join('')}
+            </div>
+            <div class="prediction">Prediction: ${item.prediction}</div>
+          `;
+          container.appendChild(card);
+        });
+      } catch (err) {
+        container.innerHTML = "<p style='color: red;'>Failed to load assessments.</p>";
+        console.error(err);
+      }
+    }
+
+    loadAssessments();
+  </script>
+</body>
+</html>

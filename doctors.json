@@ -1,0 +1,8 @@
+[
+  { "id": 1, "name": "Dr. Alice Mwangi", "email": "alice.mwangi@example.com" },
+  { "id": 2, "name": "Dr. John Otieno", "email": "john.otieno@example.com" },
+  { "id": 3, "name": "Dr. Grace Njeri", "email": "grace.njeri@example.com" },
+  { "id": 4, "name": "Dr. Michael Kamau", "email": "michael.kamau@example.com" },
+  { "id": 5, "name": "Dr. Esther Wanjiku", "email": "esther.wanjiku@example.com" },
+  { "id": 6, "name": "Dr. David Kariuki", "email": "david.kariuki@example.com" }
+]

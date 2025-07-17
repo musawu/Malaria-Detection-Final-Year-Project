@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Malaria Symptom Assessment</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #e8f5e8 0%, #f0f9f0 100%);
+            min-height: 100vh;
+            padding: 20px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        .background-blobs {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .blob {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.1;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .blob1 {
+            width: 200px;
+            height: 200px;
+            background: #2e7d32;
+            top: 10%;
+            left: 10%;
+            animation-delay: 0s;
+        }
+
+        .blob2 {
+            width: 150px;
+            height: 150px;
+            background: #4caf50;
+            top: 60%;
+            right: 10%;
+            animation-delay: 2s;
+        }
+
+        .blob3 {
+            width: 100px;
+            height: 100px;
+            background: #66bb6a;
+            bottom: 20%;
+            left: 50%;
+            animation-delay: 4s;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(180deg); }
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2e7d32, #4caf50);
+            color: white;
+            padding: 30px;
+            border-radius: 20px 20px 0 0;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            animation: shimmer 3s linear infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .progress-bar {
+            background: rgba(255, 255, 255, 0.2);
+            height: 8px;
+            border-radius: 4px;
+            margin-top: 20px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #81c784, #a5d6a7);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+            width: 0%;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .question-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeInUp 0.5s ease forwards;
+        }
+
+        .question-card.active {
+            border-color: #4caf50;
+            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.2);
+        }
+
+        @keyframes fadeInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .question-number {
+            display: inline-block;
+            background: linear-gradient(135deg, #2e7d32, #4caf50);
+            color: white;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 35px;
+            font-weight: bold;
+            margin-right: 15px;
+            font-size: 0.9em;
+        }
+
+        .question-text {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #2e7d32;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .options {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .option {
+            flex: 1;
+            min-width: 120px;
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            cursor: pointer;
+            text-align: center;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .option::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: radial-gradient(circle, rgba(76, 175, 80, 0.1) 0%, transparent 70%);
+            transition: all 0.3s ease;
+            transform: translate(-50%, -50%);
+        }
+
+        .option:hover {
+            background: #e8f5e8;
+            border-color: #4caf50;
+            transform: translateY(-2px);
+        }
+
+        .option:hover::before {
+            width: 100px;
+            height: 100px;
+        }
+
+        .option.selected {
+            background: linear-gradient(135deg, #4caf50, #66bb6a);
+            color: white;
+            border-color: #2e7d32;
+            transform: translateY(-2px);
+        }
+
+        .option.selected::after {
+            content: '✓';
+            position: absolute;
+            top: 5px;
+            right: 8px;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .nav-button {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 25px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .nav-button::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+        }
+
+        .nav-button:hover::before {
+            width: 100px;
+            height: 100px;
+        }
+
+        .prev-button {
+            background: #6c757d;
+            color: white;
+        }
+
+        .prev-button:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+
+        .next-button {
+            background: linear-gradient(135deg, #2e7d32, #4caf50);
+            color: white;
+        }
+
+        .next-button:hover {
+            background: linear-gradient(135deg, #1b5e20, #2e7d32);
+            transform: translateY(-2px);
+        }
+
+        .next-button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .question-counter {
+            color: #666;
+            font-weight: 500;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .result-card {
+            background: linear-gradient(135deg, #e8f5e8, #f0f9f0);
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            border: 2px solid #4caf50;
+        }
+
+        .result-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+
+        .result-title {
+            font-size: 2em;
+            color: #2e7d32;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .result-text {
+            font-size: 1.1em;
+            color: #555;
+            line-height: 1.6;
+            margin-bottom: 25px;
+        }
+
+        .recommendation {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            border-left: 4px solid #4caf50;
+        }
+
+        .recommendation h3 {
+            color: #2e7d32;
+            margin-bottom: 10px;
+        }
+
+        .doctor-actions {
+            margin-top: 30px;
+            padding: 20px;
+            background: #fff3cd;
+            border-radius: 10px;
+            border: 1px solid #ffeaa7;
+        }
+
+        .doctor-button {
+            background: linear-gradient(135deg, #d32f2f, #f44336);
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 25px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 10px;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .doctor-button:hover {
+            background: linear-gradient(135deg, #b71c1c, #d32f2f);
+            transform: translateY(-2px);
+        }
+
+        .back-button {
+            background: #6c757d;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 20px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 10px;
+        }
+
+        .back-button:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 15px;
+            }
+            
+            .header {
+                padding: 20px;
+                border-radius: 15px 15px 0 0;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .options {
+                flex-direction: column;
+            }
+            
+            .option {
+                min-width: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="background-blobs">
+        <div class="blob blob1"></div>
+        <div class="blob blob2"></div>
+        <div class="blob blob3"></div>
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <h1>🔬 Malaria Symptom Assessment</h1>
+            <p>Following positive anemia detection, please answer these questions</p>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+        </div>
+
+        <div class="content">
+            <div id="questionnaire">
+                <!-- Questions will be dynamically generated here -->
+            </div>
+
+            <div class="navigation">
+                <button class="nav-button prev-button" id="prevBtn" onclick="previousQuestion()">
+                    ← Previous
+                </button>
+                <span class="question-counter" id="questionCounter">1 of 10</span>
+                <button class="nav-button next-button" id="nextBtn" onclick="nextQuestion()" disabled>
+                    Next →
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const questions = [
+            "Are you currently experiencing a fever (temperature above 38°C / 100.4°F)?",
+            "Do you have chills or experience shivering episodes?",
+            "Have you been sweating excessively, especially after fever?",
+            "Are you suffering from headaches?",
+            "Do you feel nauseous or have you vomited recently?",
+            "Are you experiencing fatigue or general body weakness?",
+            "Do you have any muscle or joint pain?",
+            "Have you noticed yellowing of the skin or eyes (jaundice)?",
+            "Have you experienced any confusion or seizures recently?",
+            "Have you recently traveled to or lived in a malaria-endemic area?"
+        ];
+
+        let currentQuestion = 0;
+        let answers = {};
+
+        function initializeQuestionnaire() {
+            const questionnaire = document.getElementById('questionnaire');
+            
+            questions.forEach((question, index) => {
+                const questionCard = document.createElement('div');
+                questionCard.className = 'question-card';
+                questionCard.id = `question-${index}`;
+                questionCard.style.animationDelay = `${index * 0.1}s`;
+                
+                if (index === 0) {
+                    questionCard.classList.add('active');
+                } else {
+                    questionCard.classList.add('hidden');
+                }
+
+                questionCard.innerHTML = `
+                    <div class="question-text">
+                        <span class="question-number">${index + 1}</span>
+                        ${question}
+                    </div>
+                    <div class="options">
+                        <div class="option" onclick="selectOption(${index}, 'yes')">
+                            Yes
+                        </div>
+                        <div class="option" onclick="selectOption(${index}, 'no')">
+                            No
+                        </div>
+                    </div>
+                `;
+                
+                questionnaire.appendChild(questionCard);
+            });
+            
+            updateUI();
+        }
+
+        function selectOption(questionIndex, answer) {
+            answers[questionIndex] = answer;
+            
+            // Update UI
+            const questionCard = document.getElementById(`question-${questionIndex}`);
+            const options = questionCard.querySelectorAll('.option');
+            
+            options.forEach(option => {
+                option.classList.remove('selected');
+            });
+            
+            const selectedOption = Array.from(options).find(option => 
+                option.textContent.trim().toLowerCase() === answer
+            );
+            
+            if (selectedOption) {
+                selectedOption.classList.add('selected');
+            }
+            
+            updateUI();
+        }
+
+        function nextQuestion() {
+            if (currentQuestion < questions.length - 1) {
+                // Hide current question
+                document.getElementById(`question-${currentQuestion}`).classList.add('hidden');
+                document.getElementById(`question-${currentQuestion}`).classList.remove('active');
+                
+                currentQuestion++;
+                
+                // Show next question
+                const nextQuestionCard = document.getElementById(`question-${currentQuestion}`);
+                nextQuestionCard.classList.remove('hidden');
+                nextQuestionCard.classList.add('active');
+                
+                updateUI();
+            } else {
+                showResults();
+            }
+        }
+
+        function previousQuestion() {
+            if (currentQuestion > 0) {
+                // Hide current question
+                document.getElementById(`question-${currentQuestion}`).classList.add('hidden');
+                document.getElementById(`question-${currentQuestion}`).classList.remove('active');
+                
+                currentQuestion--;
+                
+                // Show previous question
+                const prevQuestionCard = document.getElementById(`question-${currentQuestion}`);
+                prevQuestionCard.classList.remove('hidden');
+                prevQuestionCard.classList.add('active');
+                
+                updateUI();
+            }
+        }
+
+        function updateUI() {
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            const questionCounter = document.getElementById('questionCounter');
+            const progressFill = document.getElementById('progressFill');
+            
+            // Update counter
+            questionCounter.textContent = `${currentQuestion + 1} of ${questions.length}`;
+            
+            // Update progress bar
+            const progress = ((currentQuestion + 1) / questions.length) * 100;
+            progressFill.style.width = `${progress}%`;
+            
+            // Update buttons
+            prevBtn.style.display = currentQuestion === 0 ? 'none' : 'inline-block';
+            
+            if (currentQuestion === questions.length - 1) {
+                nextBtn.textContent = 'View Results';
+                nextBtn.disabled = answers[currentQuestion] === undefined;
+            } else {
+                nextBtn.textContent = 'Next →';
+                nextBtn.disabled = answers[currentQuestion] === undefined;
+            }
+        }
+
+        function showResults() {
+            const yesAnswers = Object.values(answers).filter(answer => answer === 'yes').length;
+            const questionnaire = document.getElementById('questionnaire');
+            
+            let resultIcon, resultTitle, resultText, recommendation;
+            
+            if (yesAnswers >= 6) {
+                resultIcon = '';
+                resultTitle = 'High Risk Assessment';
+                resultText = 'Based on your responses, you have multiple symptoms that could indicate malaria. Combined with the positive anemia detection, immediate medical attention is strongly recommended.';
+                recommendation = `
+                    <h3>Immediate Actions Required:</h3>
+                    <ul>
+                        <li>Seek immediate medical attention at the nearest healthcare facility</li>
+                        <li>Request a malaria rapid diagnostic test (RDT) or blood smear</li>
+                        <li>Bring this assessment result to your healthcare provider</li>
+                        <li>Do not delay treatment - early intervention is crucial</li>
+                    </ul>
+                `;
+            } else if (yesAnswers >= 3) {
+                resultIcon = '';
+                resultTitle = 'Moderate Risk Assessment';
+                resultText = 'You have several symptoms that, combined with positive anemia detection, warrant medical evaluation for possible malaria.';
+                recommendation = `
+                    <h3>Recommended Actions:</h3>
+                    <ul>
+                        <li>Schedule an appointment with a healthcare provider within 24 hours</li>
+                        <li>Request malaria testing (RDT or microscopy)</li>
+                        <li>Monitor your symptoms and seek immediate care if they worsen</li>
+                        <li>Stay hydrated and rest</li>
+                    </ul>
+                `;
+            } else {
+                resultIcon = '';
+                resultTitle = 'Lower Risk Assessment';
+                resultText = 'While you have fewer typical malaria symptoms, the positive anemia detection still warrants medical evaluation.';
+                recommendation = `
+                    <h3>Recommended Actions:</h3>
+                    <ul>
+                        <li>Consult with a healthcare provider about the anemia detection</li>
+                        <li>Consider discussing malaria testing, especially if you\'ve traveled to endemic areas</li>
+                        <li>Continue monitoring for symptom development</li>
+                        <li>Follow up on the anemia with appropriate treatment</li>
+                    </ul>
+                `;
+            }
+            
+            // Store assessment data for sending to doctor
+            const assessmentData = {
+                timestamp: new Date().toISOString(),
+                symptoms: {},
+                yesAnswers: yesAnswers,
+                totalQuestions: questions.length,
+                riskLevel: yesAnswers >= 6 ? 'High' : yesAnswers >= 3 ? 'Moderate' : 'Lower',
+                anemiaDetected: true,
+                resultText: resultText
+            };
+
+            // Map answers to symptom names
+            const symptomMapping = [
+                'fever', 'chills', 'sweating', 'headache', 'nausea', 
+                'fatigue', 'pain', 'jaundice', 'seizure', 'travel'
+            ];
+
+            symptomMapping.forEach((symptom, index) => {
+                assessmentData.symptoms[symptom] = answers[index] || 'no';
+            });
+
+            // Store in sessionStorage for the send-assessment page
+            sessionStorage.setItem('assessmentData', JSON.stringify(assessmentData));
+            
+            questionnaire.innerHTML = `
+                <div class="result-card">
+                    <div class="result-icon">${resultIcon}</div>
+                    <div class="result-title">${resultTitle}</div>
+                    <div class="result-text">${resultText}</div>
+                    <div class="recommendation">${recommendation}</div>
+                    
+                    <div class="doctor-actions">
+                        <h3 style="color: #2e7d32; margin-bottom: 15px;"> Medical Consultation Options</h3>
+                        <p style="margin-bottom: 20px;">Would you like to send this assessment to a healthcare provider for professional review?</p>
+                        <a href="/send-assessment" class="doctor-button">
+                             Send Assessment to Doctor
+                        </a>
+                        <button class="back-button" onclick="window.location.href='/dashboard'">
+                            ← Back to Dashboard
+                        </button>
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 8px; border: 1px solid #ffeaa7;">
+                        <strong>Important Disclaimer:</strong> This assessment is for screening purposes only and does not replace professional medical diagnosis. Always consult with qualified healthcare providers for proper diagnosis and treatment.
+                    </div>
+                </div>
+            `;
+            
+            // Hide navigation
+            document.querySelector('.navigation').style.display = 'none';
+        }
+
+        // Initialize the questionnaire when the page loads
+        document.addEventListener('DOMContentLoaded', initializeQuestionnaire);
+    </script>
+</body>
+</html>
