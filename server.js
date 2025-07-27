@@ -5,11 +5,40 @@ const path = require('path');
 const session = require('express-session');
 const ort = require('onnxruntime-web');
 const sharp = require('sharp');
-const fs = require('fs');
+const fs = require('fs').promises;
+const fsSync = require('fs');
+const sqlite3 = require('sqlite3').verbose();
 const ortTensor = ort.Tensor;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// SQLite Database Setup
+const db = new sqlite3.Database('./medical_app.db', (err) => {
+  if (err) {
+    console.error('❌ Error opening database:', err);
+  } else {
+    console.log('✅ Connected to SQLite database');
+    
+    // Create the patient_results table if it doesn't exist
+    db.run(`CREATE TABLE IF NOT EXISTS patient_results (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL,
+      prediction TEXT NOT NULL,
+      confidence REAL NOT NULL,
+      symptoms TEXT,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+      date TEXT,
+      time TEXT
+    )`, (err) => {
+      if (err) {
+        console.error('❌ Error creating table:', err);
+      } else {
+        console.log('✅ Patient results table ready');
+      }
+    });
+  }
+});
 
 // In-memory storage for assessments
 const doctorAssessments = {};
@@ -32,13 +61,110 @@ const doctorProfiles = {
   }
 };
 
+// Create data directory for storing patient results (backup)
+const DATA_DIR = '/tmp/patient_data';
+const ensureDataDir = async () => {
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+  } catch (error) {
+    console.error('Error creating data directory:', error);
+  }
+};
+ensureDataDir();
+
 // Ensure required directories - Use /tmp for Vercel compatibility
 ['uploads', 'models'].forEach(dir => {
   const dirPath = `/tmp/${dir}`;
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
+  if (!fsSync.existsSync(dirPath)) {
+    fsSync.mkdirSync(dirPath, { recursive: true });
   }
 });
+
+// Updated helper functions for SQLite database management
+const savePatientResult = async (username, result) => {
+  return new Promise((resolve, reject) => {
+    const now = new Date();
+    const timestamp = now.toISOString();
+    const date = now.toLocaleDateString();
+    const time = now.toLocaleTimeString();
+    
+    // Convert symptoms object to JSON string if it exists
+    const symptomsJson = result.symptoms ? JSON.stringify(result.symptoms) : null;
+    
+    const query = `INSERT INTO patient_results 
+                   (username, prediction, confidence, symptoms, timestamp, date, time) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?)`;
+    
+    db.run(query, [
+      username, 
+      result.prediction, 
+      result.confidence, 
+      symptomsJson, 
+      timestamp, 
+      date, 
+      time
+    ], function(err) {
+      if (err) {
+        console.error('❌ Error saving patient result:', err);
+        reject(err);
+      } else {
+        console.log(`✅ Saved result for patient: ${username} (ID: ${this.lastID})`);
+        resolve({
+          id: this.lastID,
+          username,
+          prediction: result.prediction,
+          confidence: result.confidence,
+          symptoms: result.symptoms,
+          timestamp,
+          date,
+          time
+        });
+      }
+    });
+  });
+};
+
+const getPatientResults = async (username) => {
+  return new Promise((resolve, reject) => {
+    const query = `SELECT * FROM patient_results 
+                   WHERE username = ? 
+                   ORDER BY timestamp DESC 
+                   LIMIT 50`;
+    
+    db.all(query, [username], (err, rows) => {
+      if (err) {
+        console.error('❌ Error fetching patient results:', err);
+        reject(err);
+      } else {
+        // Parse symptoms JSON back to object
+        const results = rows.map(row => ({
+          ...row,
+          symptoms: row.symptoms ? JSON.parse(row.symptoms) : null
+        }));
+        resolve(results);
+      }
+    });
+  });
+};
+
+const deletePatientResult = async (username, resultId) => {
+  return new Promise((resolve, reject) => {
+    const query = `DELETE FROM patient_results 
+                   WHERE id = ? AND username = ?`;
+    
+    db.run(query, [resultId, username], function(err) {
+      if (err) {
+        console.error('❌ Error deleting patient result:', err);
+        reject(err);
+      } else if (this.changes === 0) {
+        reject(new Error('Result not found or unauthorized'));
+      } else {
+        console.log(`✅ Deleted result ID: ${resultId} for patient: ${username}`);
+        resolve(true);
+      }
+    });
+  });
+};
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
@@ -75,10 +201,10 @@ const tmpModelPath = '/tmp/models/eyelid_anemia_model.onnx';
 
 async function loadModel() {
   // Try to load from the original location first
-  if (fs.existsSync(modelPath)) {
+  if (fsSync.existsSync(modelPath)) {
     sessionONNX = await ort.InferenceSession.create(modelPath);
     console.log('✅ Model loaded from original path');
-  } else if (fs.existsSync(tmpModelPath)) {
+  } else if (fsSync.existsSync(tmpModelPath)) {
     sessionONNX = await ort.InferenceSession.create(tmpModelPath);
     console.log('✅ Model loaded from tmp path');
   } else {
@@ -179,6 +305,11 @@ app.get('/send-assessment', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'send-assessment.html'));
 });
 
+// New route for patient history page
+app.get('/history', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'patient-history.html'));
+});
+
 // Prediction endpoint (for users)
 app.post('/predict', requireAuth, upload.single('eyelid'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
@@ -195,7 +326,11 @@ app.post('/predict', requireAuth, upload.single('eyelid'), async (req, res) => {
       prediction = confidence > 0.5 ? 'Non-anemic' : 'Anemic';
     }
 
-    req.session.lastPrediction = { prediction, confidence };
+    // Save result to SQLite database
+    const resultData = { prediction, confidence };
+    await savePatientResult(req.session.username, resultData);
+
+    req.session.lastPrediction = resultData;
     res.json({ 
       prediction, 
       confidence, 
@@ -207,8 +342,8 @@ app.post('/predict', requireAuth, upload.single('eyelid'), async (req, res) => {
   }
 });
 
-// Send assessment to doctor (for users)
-app.post('/api/sendToDoctor', requireAuth, (req, res) => {
+// Send assessment to doctor (updated to include symptoms)
+app.post('/api/sendToDoctor', requireAuth, async (req, res) => {
   const { doctorId, assessmentData } = req.body;
   
   if (!doctorId || !assessmentData) {
@@ -236,11 +371,192 @@ app.post('/api/sendToDoctor', requireAuth, (req, res) => {
 
   doctorAssessments[doctorId].push(assessment);
 
+  // Also save this to patient's history with symptoms in SQLite
+  try {
+    const resultWithSymptoms = {
+      prediction: assessmentData.prediction,
+      confidence: assessmentData.confidence || 0.8,
+      symptoms: assessmentData.symptoms
+    };
+    await savePatientResult(req.session.username, resultWithSymptoms);
+  } catch (error) {
+    console.error('Error saving assessment to patient history:', error);
+  }
+
   console.log(`Assessment sent to doctor ${doctorId} from user ${req.session.username}`);
   res.json({ 
     success: true, 
     message: `Assessment sent to ${doctorProfiles[doctorId].name} successfully.` 
   });
+});
+
+// API endpoint to get patient history from SQLite
+app.get('/api/patient-history', requireAuth, async (req, res) => {
+  try {
+    const results = await getPatientResults(req.session.username);
+    res.json(results);
+  } catch (error) {
+    console.error('Error fetching patient history:', error);
+    res.status(500).json({ error: 'Failed to fetch patient history' });
+  }
+});
+
+// Get patient statistics summary from SQLite
+app.get('/api/patient-stats', requireAuth, async (req, res) => {
+  try {
+    const results = await getPatientResults(req.session.username);
+    
+    if (results.length === 0) {
+      return res.json({
+        totalTests: 0,
+        anemicResults: 0,
+        normalResults: 0,
+        avgConfidence: 0,
+        thisWeekTests: 0,
+        lastTest: null,
+        trend: 'stable'
+      });
+    }
+
+    // Calculate statistics
+    const totalTests = results.length;
+    const anemicResults = results.filter(r => r.prediction === 'Anemic').length;
+    const normalResults = results.filter(r => r.prediction === 'Non-anemic').length;
+    const avgConfidence = results.reduce((sum, r) => sum + r.confidence, 0) / totalTests;
+
+    // This week's tests
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const thisWeekTests = results.filter(r => 
+      new Date(r.timestamp) > weekAgo
+    ).length;
+
+    // Last test
+    const lastTest = results[0];
+
+    // Calculate trend (compare last 3 vs previous 3)
+    let trend = 'stable';
+    if (results.length >= 6) {
+      const recent3 = results.slice(0, 3);
+      const previous3 = results.slice(3, 6);
+      const recentAvg = recent3.reduce((sum, r) => sum + r.confidence, 0) / 3;
+      const previousAvg = previous3.reduce((sum, r) => sum + r.confidence, 0) / 3;
+      
+      if (recentAvg > previousAvg + 0.1) trend = 'improving';
+      else if (recentAvg < previousAvg - 0.1) trend = 'declining';
+    }
+
+    res.json({
+      totalTests,
+      anemicResults,
+      normalResults,
+      avgConfidence: Math.round(avgConfidence * 100),
+      thisWeekTests,
+      lastTest,
+      trend
+    });
+  } catch (error) {
+    console.error('Error fetching patient stats:', error);
+    res.status(500).json({ error: 'Failed to fetch statistics' });
+  }
+});
+
+// Export patient data (CSV format) from SQLite
+app.get('/api/export-data', requireAuth, async (req, res) => {
+  try {
+    const results = await getPatientResults(req.session.username);
+    
+    if (results.length === 0) {
+      return res.status(404).json({ error: 'No data to export' });
+    }
+
+    // Create CSV content
+    let csvContent = 'Date,Time,Prediction,Confidence,Symptoms\n';
+    
+    results.forEach(result => {
+      const date = new Date(result.timestamp);
+      const dateStr = date.toLocaleDateString();
+      const timeStr = date.toLocaleTimeString();
+      const symptomsStr = result.symptoms ? 
+        Object.entries(result.symptoms).map(([k, v]) => `${k}:${v}`).join(';') : 
+        'None';
+      
+      csvContent += `"${dateStr}","${timeStr}","${result.prediction}","${(result.confidence * 100).toFixed(2)}%","${symptomsStr}"\n`;
+    });
+
+    // Set headers for file download
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="medical_history_${req.session.username}_${new Date().toISOString().split('T')[0]}.csv"`);
+    
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Error exporting data:', error);
+    res.status(500).json({ error: 'Failed to export data' });
+  }
+});
+
+// Delete a specific result from SQLite
+app.delete('/api/patient-history/:resultId', requireAuth, async (req, res) => {
+  try {
+    const { resultId } = req.params;
+    await deletePatientResult(req.session.username, resultId);
+    res.json({ success: true, message: 'Result deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting result:', error);
+    if (error.message === 'Result not found or unauthorized') {
+      res.status(404).json({ error: 'Result not found' });
+    } else {
+      res.status(500).json({ error: 'Failed to delete result' });
+    }
+  }
+});
+
+// Get health insights based on patient data from SQLite
+app.get('/api/health-insights', requireAuth, async (req, res) => {
+  try {
+    const results = await getPatientResults(req.session.username);
+    
+    if (results.length < 3) {
+      return res.json({
+        insights: ['Take more tests for better health insights'],
+        recommendations: ['Regular screening helps track your health trends']
+      });
+    }
+
+    const insights = [];
+    const recommendations = [];
+
+    // Analyze trends
+    const recentResults = results.slice(0, 5);
+    const anemicCount = recentResults.filter(r => r.prediction === 'Anemic').length;
+    const avgConfidence = recentResults.reduce((sum, r) => sum + r.confidence, 0) / recentResults.length;
+
+    if (anemicCount >= 3) {
+      insights.push('⚠️ Multiple recent anemic results detected');
+      recommendations.push('Consider consulting with a healthcare professional');
+    } else if (anemicCount === 0) {
+      insights.push('✅ Recent results show no signs of anemia');
+      recommendations.push('Keep maintaining your healthy lifestyle');
+    }
+
+    if (avgConfidence > 0.8) {
+      insights.push('📊 High confidence in recent predictions');
+    } else if (avgConfidence < 0.6) {
+      insights.push('📊 Consider retaking tests for more reliable results');
+      recommendations.push('Ensure good lighting and clear eyelid photos');
+    }
+
+    // Testing frequency analysis
+    const daysSinceLastTest = Math.floor((new Date() - new Date(results[0].timestamp)) / (1000 * 60 * 60 * 24));
+    if (daysSinceLastTest > 30) {
+      recommendations.push('Consider taking a new screening test');
+    }
+
+    res.json({ insights, recommendations });
+  } catch (error) {
+    console.error('Error generating insights:', error);
+    res.status(500).json({ error: 'Failed to generate insights' });
+  }
 });
 
 // Doctor dashboard (protected for doctors only)
@@ -536,6 +852,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     modelLoaded: !!sessionONNX,
+    databaseConnected: !!db,
     timestamp: new Date().toISOString()
   });
 });
@@ -581,7 +898,21 @@ app.use((err, req, res, next) => {
   `);
 });
 
+// Graceful database shutdown
+process.on('SIGINT', () => {
+  console.log('\n🛑 Shutting down gracefully...');
+  db.close((err) => {
+    if (err) {
+      console.error('❌ Error closing database:', err);
+    } else {
+      console.log('✅ Database connection closed');
+    }
+    process.exit(0);
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`✅ Server running at http://localhost:${PORT}`);
   console.log(`📊 Available doctors: ${Object.keys(doctorProfiles).length}`);
+  console.log(`🗄️ SQLite database: medical_app.db`);
 });

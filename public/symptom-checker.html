@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Malaria Symptom Assessment</title>
+    <title>Anemia Detection & Malaria Symptom Assessment</title>
     <style>
         * {
             margin: 0;
@@ -136,6 +136,166 @@
             padding: 30px;
         }
 
+        /* Image Upload Section */
+        .upload-section {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 25px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            text-align: center;
+            animation: fadeInUp 0.5s ease forwards;
+        }
+
+        .upload-title {
+            font-size: 1.5em;
+            color: #2e7d32;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .upload-form {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+            cursor: pointer;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .file-input {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .file-input-display {
+            border: 3px dashed #4caf50;
+            border-radius: 15px;
+            padding: 40px 20px;
+            background: #f8f9fa;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .file-input-display:hover {
+            border-color: #2e7d32;
+            background: #e8f5e8;
+            transform: translateY(-2px);
+        }
+
+        .file-input-display.dragover {
+            border-color: #2e7d32;
+            background: #e8f5e8;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 3em;
+            color: #4caf50;
+            margin-bottom: 15px;
+        }
+
+        .upload-text {
+            color: #666;
+            font-size: 1.1em;
+            margin-bottom: 10px;
+        }
+
+        .upload-subtext {
+            color: #999;
+            font-size: 0.9em;
+        }
+
+        .image-preview {
+            max-width: 300px;
+            max-height: 200px;
+            border-radius: 10px;
+            margin-top: 15px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .detect-button {
+            background: linear-gradient(135deg, #2e7d32, #4caf50);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.1em;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .detect-button:hover {
+            background: linear-gradient(135deg, #1b5e20, #2e7d32);
+            transform: translateY(-2px);
+        }
+
+        .detect-button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .detect-button.detecting::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            right: 15px;
+            width: 20px;
+            height: 20px;
+            border: 2px solid white;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            transform: translateY(-50%);
+        }
+
+        @keyframes spin {
+            to { transform: translateY(-50%) rotate(360deg); }
+        }
+
+        .detection-result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 10px;
+            font-size: 1.2em;
+            font-weight: 600;
+            text-align: center;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.5s ease;
+        }
+
+        .detection-result.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .detection-result.anemic {
+            background: #ffebee;
+            color: #d32f2f;
+            border: 2px solid #f44336;
+        }
+
+        .detection-result.non-anemic {
+            background: #e8f5e8;
+            color: #2e7d32;
+            border: 2px solid #4caf50;
+        }
+
+        /* Question Section */
         .question-card {
             background: white;
             border-radius: 15px;
@@ -314,7 +474,7 @@
         }
 
         .hidden {
-            display: none;
+            display: none !important;
         }
 
         .result-card {
@@ -350,6 +510,7 @@
             padding: 20px;
             margin-top: 20px;
             border-left: 4px solid #4caf50;
+            text-align: left;
         }
 
         .recommendation h3 {
@@ -440,26 +601,49 @@
 
     <div class="container">
         <div class="header">
-            <h1>🔬 Malaria Symptom Assessment</h1>
-            <p>Following positive anemia detection, please answer these questions</p>
+            <h1>🔬 AI Medical Assessment</h1>
+            <p id="headerText">Upload your eyelid image for anemia detection</p>
             <div class="progress-bar">
                 <div class="progress-fill" id="progressFill"></div>
             </div>
         </div>
 
         <div class="content">
-            <div id="questionnaire">
-                <!-- Questions will be dynamically generated here -->
+            <!-- Image Upload Section -->
+            <div class="upload-section" id="uploadSection">
+                <div class="upload-title">Step 1: Anemia Detection</div>
+                <form class="upload-form" id="uploadForm">
+                    <div class="file-input-wrapper">
+                        <input type="file" id="eyelid" name="eyelid" accept="image/*" class="file-input" required>
+                        <div class="file-input-display" id="fileInputDisplay">
+                            <div class="upload-icon">📷</div>
+                            <div class="upload-text">Click to upload eyelid image</div>
+                            <div class="upload-subtext">or drag and drop your image here</div>
+                        </div>
+                    </div>
+                    <img id="imagePreview" class="image-preview hidden" alt="Preview">
+                    <button type="submit" class="detect-button" id="detectButton" disabled>
+                        Analyze Image
+                    </button>
+                </form>
+                <div class="detection-result" id="detectionResult"></div>
             </div>
 
-            <div class="navigation">
-                <button class="nav-button prev-button" id="prevBtn" onclick="previousQuestion()">
-                    ← Previous
-                </button>
-                <span class="question-counter" id="questionCounter">1 of 10</span>
-                <button class="nav-button next-button" id="nextBtn" onclick="nextQuestion()" disabled>
-                    Next →
-                </button>
+            <!-- Questionnaire Section -->
+            <div id="questionnaireSection" class="hidden">
+                <div id="questionnaire">
+                    <!-- Questions will be dynamically generated here -->
+                </div>
+
+                <div class="navigation">
+                    <button class="nav-button prev-button" id="prevBtn" onclick="previousQuestion()">
+                        ← Previous
+                    </button>
+                    <span class="question-counter" id="questionCounter">1 of 10</span>
+                    <button class="nav-button next-button" id="nextBtn" onclick="nextQuestion()" disabled>
+                        Next →
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -480,6 +664,198 @@
 
         let currentQuestion = 0;
         let answers = {};
+        let anemiaDetectionResult = null;
+
+        // Image upload functionality
+        const fileInput = document.getElementById('eyelid');
+        const fileInputDisplay = document.getElementById('fileInputDisplay');
+        const imagePreview = document.getElementById('imagePreview');
+        const detectButton = document.getElementById('detectButton');
+        const uploadForm = document.getElementById('uploadForm');
+
+        fileInput.addEventListener('change', handleFileSelect);
+        fileInputDisplay.addEventListener('dragover', handleDragOver);
+        fileInputDisplay.addEventListener('drop', handleDrop);
+        uploadForm.addEventListener('submit', handleImageUpload);
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                displayImagePreview(file);
+                detectButton.disabled = false;
+            }
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            fileInputDisplay.classList.add('dragover');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            fileInputDisplay.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                displayImagePreview(files[0]);
+                detectButton.disabled = false;
+            }
+        }
+
+        function displayImagePreview(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                imagePreview.src = e.target.result;
+                imagePreview.classList.remove('hidden');
+                
+                // Update upload display
+                fileInputDisplay.innerHTML = `
+                    <div class="upload-icon">✅</div>
+                    <div class="upload-text">Image selected: ${file.name}</div>
+                    <div class="upload-subtext">Click to change image</div>
+                `;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function handleImageUpload(e) {
+            e.preventDefault();
+
+            if (!fileInput.files.length) {
+                alert('Please select an image.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('eyelid', fileInput.files[0]);
+
+            const detectButton = document.getElementById('detectButton');
+            const detectionResult = document.getElementById('detectionResult');
+
+            detectButton.textContent = 'Analyzing...';
+            detectButton.classList.add('detecting');
+            detectButton.disabled = true;
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                detectButton.classList.remove('detecting');
+                detectButton.textContent = 'Analyze Image';
+
+                if (data.error) {
+                    detectionResult.textContent = 'Error: ' + data.error;
+                    detectionResult.className = 'detection-result show';
+                    detectionResult.style.background = '#ffebee';
+                    detectionResult.style.color = '#d32f2f';
+                    detectionResult.style.border = '2px solid #f44336';
+                } else {
+                    const confidence = Math.round(data.confidence * 100);
+                    detectionResult.innerHTML = `
+                        <div style="font-size: 1.5em; margin-bottom: 10px;">
+                            ${data.prediction === 'Anemic' ? '⚠️' : '✅'} ${data.prediction}
+                        </div>
+                        <div>Confidence: ${confidence}%</div>
+                    `;
+                    
+                    detectionResult.className = `detection-result show ${data.prediction === 'Anemic' ? 'anemic' : 'non-anemic'}`;
+                    
+                    // Store detection result
+                    anemiaDetectionResult = {
+                        prediction: data.prediction,
+                        confidence: data.confidence
+                    };
+
+                    // Show next step based on result
+                    setTimeout(() => {
+                        if (data.prediction === 'Anemic') {
+                            proceedToSymptomAssessment();
+                        } else {
+                            showNonAnemicResult();
+                        }
+                    }, 2000);
+                }
+            } catch (err) {
+                detectButton.classList.remove('detecting');
+                detectButton.textContent = 'Analyze Image';
+                detectionResult.textContent = 'Error during detection. Please try again.';
+                detectionResult.className = 'detection-result show';
+                detectionResult.style.background = '#ffebee';
+                detectionResult.style.color = '#d32f2f';
+                detectionResult.style.border = '2px solid #f44336';
+                console.error('Detection error:', err);
+            }
+        }
+
+        function proceedToSymptomAssessment() {
+            // Update header
+            document.getElementById('headerText').textContent = 'Anemia detected - Please complete symptom assessment';
+            
+            // Hide upload section
+            document.getElementById('uploadSection').classList.add('hidden');
+            
+            // Show questionnaire section
+            document.getElementById('questionnaireSection').classList.remove('hidden');
+            
+            // Initialize questionnaire
+            initializeQuestionnaire();
+            
+            // Update progress bar
+            updateProgressBar();
+        }
+
+        function showNonAnemicResult() {
+            const questionnaire = document.getElementById('questionnaire');
+            questionnaire.innerHTML = `
+                <div class="result-card">
+                    <div class="result-icon">✅</div>
+                    <div class="result-title">No Anemia Detected</div>
+                    <div class="result-text">
+                        Great news! The AI analysis indicates no signs of anemia in your eyelid image. 
+                        Your hemoglobin levels appear to be within normal range.
+                    </div>
+                    <div class="recommendation">
+                        <h3>Recommendations:</h3>
+                        <ul>
+                            <li>Continue maintaining a healthy, iron-rich diet</li>
+                            <li>Regular health check-ups are still important</li>
+                            <li>Monitor for any symptoms and consult a doctor if concerned</li>
+                            <li>Consider periodic screening as part of routine healthcare</li>
+                        </ul>
+                    </div>
+                    
+                    <div style="margin-top: 30px;">
+                        <button class="back-button" onclick="window.location.href='/dashboard'">
+                            ← Back to Dashboard
+                        </button>
+                        <button class="back-button" onclick="location.reload()">
+                            🔄 Test Again
+                        </button>
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding: 15px; background: #e3f2fd; border-radius: 8px; border: 1px solid #90caf9;">
+                        <strong>Note:</strong> This AI screening is for preliminary assessment only. 
+                        Always consult healthcare professionals for comprehensive medical evaluation.
+                    </div>
+                </div>
+            `;
+            
+            // Update header and hide upload section
+            document.getElementById('headerText').textContent = 'Assessment Complete';
+            document.getElementById('uploadSection').classList.add('hidden');
+            document.getElementById('questionnaireSection').classList.remove('hidden');
+            
+            // Hide navigation
+            document.querySelector('.navigation').style.display = 'none';
+            
+            // Update progress bar to 100%
+            document.getElementById('progressFill').style.width = '100%';
+        }
 
         function initializeQuestionnaire() {
             const questionnaire = document.getElementById('questionnaire');
@@ -579,14 +955,12 @@
             const prevBtn = document.getElementById('prevBtn');
             const nextBtn = document.getElementById('nextBtn');
             const questionCounter = document.getElementById('questionCounter');
-            const progressFill = document.getElementById('progressFill');
             
             // Update counter
             questionCounter.textContent = `${currentQuestion + 1} of ${questions.length}`;
             
-            // Update progress bar
-            const progress = ((currentQuestion + 1) / questions.length) * 100;
-            progressFill.style.width = `${progress}%`;
+            // Update progress bar (50% for image detection + 50% for questions)
+            updateProgressBar();
             
             // Update buttons
             prevBtn.style.display = currentQuestion === 0 ? 'none' : 'inline-block';
@@ -600,6 +974,20 @@
             }
         }
 
+        function updateProgressBar() {
+            const progressFill = document.getElementById('progressFill');
+            
+            if (anemiaDetectionResult) {
+                // 50% for detection complete + progress through questions
+                const questionProgress = ((currentQuestion + 1) / questions.length) * 50;
+                const totalProgress = 50 + questionProgress;
+                progressFill.style.width = `${totalProgress}%`;
+            } else {
+                // Just image upload progress
+                progressFill.style.width = '10%';
+            }
+        }
+
         function showResults() {
             const yesAnswers = Object.values(answers).filter(answer => answer === 'yes').length;
             const questionnaire = document.getElementById('questionnaire');
@@ -607,55 +995,60 @@
             let resultIcon, resultTitle, resultText, recommendation;
             
             if (yesAnswers >= 6) {
-                resultIcon = '';
+                resultIcon = '🚨';
                 resultTitle = 'High Risk Assessment';
-                resultText = 'Based on your responses, you have multiple symptoms that could indicate malaria. Combined with the positive anemia detection, immediate medical attention is strongly recommended.';
+                resultText = 'Based on your anemia detection and symptom responses, you have multiple indicators that could suggest malaria. Immediate medical attention is strongly recommended.';
                 recommendation = `
-                    <h3>Immediate Actions Required:</h3>
+                    <h3>🚨 Immediate Actions Required:</h3>
                     <ul>
                         <li>Seek immediate medical attention at the nearest healthcare facility</li>
                         <li>Request a malaria rapid diagnostic test (RDT) or blood smear</li>
                         <li>Bring this assessment result to your healthcare provider</li>
                         <li>Do not delay treatment - early intervention is crucial</li>
+                        <li>Monitor symptoms closely and call emergency services if condition worsens</li>
                     </ul>
                 `;
             } else if (yesAnswers >= 3) {
-                resultIcon = '';
+                resultIcon = '⚠️';
                 resultTitle = 'Moderate Risk Assessment';
-                resultText = 'You have several symptoms that, combined with positive anemia detection, warrant medical evaluation for possible malaria.';
+                resultText = 'You have several symptoms combined with anemia detection that warrant medical evaluation for possible malaria.';
                 recommendation = `
-                    <h3>Recommended Actions:</h3>
+                    <h3>⚠️ Recommended Actions:</h3>
                     <ul>
                         <li>Schedule an appointment with a healthcare provider within 24 hours</li>
                         <li>Request malaria testing (RDT or microscopy)</li>
                         <li>Monitor your symptoms and seek immediate care if they worsen</li>
                         <li>Stay hydrated and rest</li>
+                        <li>Consider iron supplementation for anemia (consult doctor first)</li>
                     </ul>
                 `;
             } else {
-                resultIcon = '';
+                resultIcon = '💛';
                 resultTitle = 'Lower Risk Assessment';
-                resultText = 'While you have fewer typical malaria symptoms, the positive anemia detection still warrants medical evaluation.';
+                resultText = 'While you have fewer typical malaria symptoms, the anemia detection still warrants medical evaluation and monitoring.';
                 recommendation = `
-                    <h3>Recommended Actions:</h3>
+                    <h3>💛 Recommended Actions:</h3>
                     <ul>
                         <li>Consult with a healthcare provider about the anemia detection</li>
-                        <li>Consider discussing malaria testing, especially if you\'ve traveled to endemic areas</li>
+                        <li>Consider discussing malaria testing, especially if you've traveled to endemic areas</li>
                         <li>Continue monitoring for symptom development</li>
                         <li>Follow up on the anemia with appropriate treatment</li>
+                        <li>Maintain a healthy, iron-rich diet</li>
                     </ul>
                 `;
             }
             
-            // Store assessment data for sending to doctor
+            // Store comprehensive assessment data for sending to doctor
             const assessmentData = {
                 timestamp: new Date().toISOString(),
+                anemiaDetection: anemiaDetectionResult,
                 symptoms: {},
                 yesAnswers: yesAnswers,
                 totalQuestions: questions.length,
                 riskLevel: yesAnswers >= 6 ? 'High' : yesAnswers >= 3 ? 'Moderate' : 'Lower',
-                anemiaDetected: true,
-                resultText: resultText
+                resultText: resultText,
+                prediction: anemiaDetectionResult.prediction,
+                confidence: anemiaDetectionResult.confidence
             };
 
             // Map answers to symptom names
@@ -675,32 +1068,62 @@
                 <div class="result-card">
                     <div class="result-icon">${resultIcon}</div>
                     <div class="result-title">${resultTitle}</div>
+                    
+                    <div style="background: white; padding: 20px; border-radius: 10px; margin: 20px 0; border-left: 4px solid #2e7d32;">
+                        <h3 style="color: #2e7d32; margin-bottom: 10px;">📊 Assessment Summary</h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; text-align: left;">
+                            <div>
+                                <strong>Anemia Detection:</strong><br>
+                                <span style="color: ${anemiaDetectionResult.prediction === 'Anemic' ? '#d32f2f' : '#2e7d32'};">
+                                    ${anemiaDetectionResult.prediction}
+                                </span>
+                                <br><small>Confidence: ${Math.round(anemiaDetectionResult.confidence * 100)}%</small>
+                            </div>
+                            <div>
+                                <strong>Symptom Score:</strong><br>
+                                <span style="color: ${yesAnswers >= 6 ? '#d32f2f' : yesAnswers >= 3 ? '#f57c00' : '#2e7d32'};">
+                                    ${yesAnswers}/${questions.length} symptoms
+                                </span>
+                                <br><small>Risk Level: ${assessmentData.riskLevel}</small>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div class="result-text">${resultText}</div>
                     <div class="recommendation">${recommendation}</div>
                     
                     <div class="doctor-actions">
-                        <h3 style="color: #2e7d32; margin-bottom: 15px;"> Medical Consultation Options</h3>
-                        <p style="margin-bottom: 20px;">Would you like to send this assessment to a healthcare provider for professional review?</p>
+                        <h3 style="color: #2e7d32; margin-bottom: 15px;">🏥 Medical Consultation Options</h3>
+                        <p style="margin-bottom: 20px;">Would you like to send this comprehensive assessment to a healthcare provider for professional review?</p>
                         <a href="/send-assessment" class="doctor-button">
-                             Send Assessment to Doctor
+                            📤 Send Assessment to Doctor
                         </a>
                         <button class="back-button" onclick="window.location.href='/dashboard'">
-                            ← Back to Dashboard
+                            🏠 Back to Dashboard
+                        </button>
+                        <button class="back-button" onclick="location.reload()">
+                            🔄 New Assessment
                         </button>
                     </div>
                     
                     <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 8px; border: 1px solid #ffeaa7;">
-                        <strong>Important Disclaimer:</strong> This assessment is for screening purposes only and does not replace professional medical diagnosis. Always consult with qualified healthcare providers for proper diagnosis and treatment.
+                        <strong>⚕️ Important Medical Disclaimer:</strong> This AI-powered assessment is for screening and educational purposes only. It combines computer vision analysis with symptom evaluation but does not replace professional medical diagnosis. Always consult with qualified healthcare providers for proper diagnosis, treatment, and medical advice.
                     </div>
                 </div>
             `;
             
-            // Hide navigation
+            // Hide navigation and update header
             document.querySelector('.navigation').style.display = 'none';
+            document.getElementById('headerText').textContent = 'Assessment Complete';
+            
+            // Set progress to 100%
+            document.getElementById('progressFill').style.width = '100%';
         }
 
-        // Initialize the questionnaire when the page loads
-        document.addEventListener('DOMContentLoaded', initializeQuestionnaire);
+        // Initialize progress bar on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateProgressBar();
+        });
     </script>
 </body>
 </html>

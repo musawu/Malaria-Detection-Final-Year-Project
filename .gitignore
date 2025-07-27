@@ -1,0 +1,5 @@
+node_modules/
+uploads/
+medical_app.db
+.env
+.DS_Store
