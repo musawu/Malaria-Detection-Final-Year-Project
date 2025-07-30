@@ -1,0 +1,366 @@
+// server.js - Enhanced Medical Screening System with MongoDB
+const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const session = require('express-session');
+const MongoStore = require('connect-mongo');
+const mongoose = require('mongoose');
+const ort = require('onnxruntime-web');
+const sharp = require('sharp');
+const fs = require('fs').promises;
+const fsSync = require('fs');
+const bcrypt = require('bcrypt');
+const ortTensor = ort.Tensor;
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// =============================================
+// DATABASE SETUP
+// =============================================
+
+// MongoDB Connection
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/medical_screening_app';
+
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+}).then(async () => {
+  console.log('✅ Connected to MongoDB database');
+  await createDefaultAdmin();
+}).catch(err => {
+  console.error('❌ Error connecting to MongoDB:', err);
+  process.exit(1);
+});
+
+// MongoDB Schemas
+const patientResultSchema = new mongoose.Schema({
+  username: { type: String, required: true, index: true },
+  prediction: { type: String, required: true },
+  confidence: { type: Number, required: true },
+  symptoms: { type: Object, default: null },
+  timestamp: { type: Date, default: Date.now },
+  date: { type: String },
+  time: { type: String }
+});
+
+const userSchema = new mongoose.Schema({
+  username: { type: String, unique: true, required: true },
+  email: { type: String, unique: true, sparse: true },
+  password: { type: String, required: true },
+  full_name: { type: String },
+  role: { type: String, required: true, enum: ['user', 'doctor', 'admin'] },
+  doctorId: { type: String },
+  created_at: { type: Date, default: Date.now },
+  is_active: { type: Boolean, default: true }
+});
+
+const adminLogSchema = new mongoose.Schema({
+  admin_username: { type: String, required: true },
+  action: { type: String, required: true },
+  target_user: { type: String, default: null },
+  details: { type: String, default: null },
+  timestamp: { type: Date, default: Date.now }
+});
+
+const doctorAssessmentSchema = new mongoose.Schema({
+  doctorId: { type: String, required: true, index: true },
+  from: { type: String, required: true },
+  prediction: { type: String },
+  confidence: { type: Number },
+  symptoms: { type: Object },
+  riskLevel: { type: String, enum: ['Low', 'Medium', 'High'], default: 'Medium' },
+  status: { type: String, enum: ['pending', 'reviewed', 'completed'], default: 'pending' },
+  timestamp: { type: Date, default: Date.now }
+});
+
+// Create indexes
+patientResultSchema.index({ username: 1, timestamp: -1 });
+adminLogSchema.index({ timestamp: -1 });
+doctorAssessmentSchema.index({ doctorId: 1, timestamp: -1 });
+userSchema.index({ username: 1, role: 1 });
+
+// MongoDB Models
+const PatientResult = mongoose.model('PatientResult', patientResultSchema);
+const User = mongoose.model('User', userSchema);
+const AdminLog = mongoose.model('AdminLog', adminLogSchema);
+const DoctorAssessment = mongoose.model('DoctorAssessment', doctorAssessmentSchema);
+
+// Doctor profiles
+const doctorProfiles = {
+  '1': {
+    name: 'Dr. Alice Mwangi',
+    specialty: 'Infectious Diseases',
+    location: 'Nairobi',
+    photo: 'https://randomuser.me/api/portraits/women/44.jpg',
+    username: 'doctor1'
+  },
+  '2': {
+    name: 'Dr. Grace Njeri',
+    specialty: 'Tropical Medicine',
+    location: 'Mombasa',
+    photo: 'https://randomuser.me/api/portraits/women/46.jpg',
+    username: 'doctor2'
+  }
+};
+
+// =============================================
+// HELPER FUNCTIONS
+// =============================================
+
+async function createDefaultAdmin() {
+  try {
+    const existingAdmin = await User.findOne({ role: 'admin' });
+    
+    if (!existingAdmin) {
+      const defaultAdminUsername = process.env.DEFAULT_ADMIN_USER || 'admin';
+      const defaultAdminPassword = process.env.DEFAULT_ADMIN_PASS || 'admin123';
+      
+      const hashedPassword = await bcrypt.hash(defaultAdminPassword, 10);
+      
+      const defaultAdmin = new User({
+        username: defaultAdminUsername,
+        password: hashedPassword,
+        full_name: 'System Administrator',
+        email: 'admin@medicalsystem.com',
+        role: 'admin',
+        is_active: true
+      });
+      
+      await defaultAdmin.save();
+      console.log('🔑 Default admin account created');
+    }
+  } catch (error) {
+    console.error('❌ Error creating default admin:', error);
+  }
+}
+
+async function logAdminAction(adminUsername, action, targetUser = null, details = null) {
+  try {
+    const log = new AdminLog({
+      admin_username: adminUsername,
+      action,
+      target_user: targetUser,
+      details
+    });
+    await log.save();
+    console.log(`📝 Admin action logged: ${action} by ${adminUsername}`);
+  } catch (err) {
+    console.error('❌ Error logging admin action:', err);
+  }
+}
+
+async function savePatientResult(username, result) {
+  try {
+    const now = new Date();
+    const safeConfidence = Number.isFinite(result.confidence) ? result.confidence : 0.0;
+    const patientResult = new PatientResult({
+      username,
+      prediction: result.prediction,
+      confidence: safeConfidence,
+      symptoms: result.symptoms,
+      timestamp: now,
+      date: now.toLocaleDateString(),
+      time: now.toLocaleTimeString()
+    });
+    return await patientResult.save();
+  } catch (err) {
+    console.error('❌ Error saving patient result:', err);
+    throw err;
+  }
+}
+
+async function getPatientResults(username) {
+  try {
+    return await PatientResult.find({ username })
+      .sort({ timestamp: -1 })
+      .limit(50)
+      .lean();
+  } catch (err) {
+    console.error('❌ Error fetching patient results:', err);
+    throw err;
+  }
+}
+
+async function getAllPatientResults() {
+  try {
+    return await PatientResult.find().sort({ timestamp: -1 }).lean();
+  } catch (err) {
+    console.error('❌ Error fetching all patient results:', err);
+    throw err;
+  }
+}
+
+async function getSystemStats() {
+  try {
+    const [totalUsersCount, totalTests, anemicCases, todayTests, weeklyTests, userActivity, predictionTrends, monthlyStats] = await Promise.all([
+      PatientResult.distinct('username').then(users => users.length),
+      PatientResult.countDocuments(),
+      PatientResult.countDocuments({ prediction: 'Anemic' }),
+      PatientResult.countDocuments({ timestamp: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } }),
+      PatientResult.aggregate([{ $match: { timestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }, { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } }, count: { $sum: 1 } } }, { $sort: { _id: 1 } }]),
+      PatientResult.aggregate([{ $group: { _id: "$username", tests: { $sum: 1 }, last_test: { $max: "$timestamp" } } }, { $sort: { tests: -1 } }, { $limit: 10 }]),
+      PatientResult.aggregate([{ $group: { _id: "$prediction", count: { $sum: 1 } } }]),
+      PatientResult.aggregate([{ $group: { _id: { $dateToString: { format: "%Y-%m", date: "$timestamp" } }, count: { $sum: 1 } } }, { $sort: { _id: -1 } }, { $limit: 12 }])
+    ]);
+
+    return {
+      totalUsers: [{ count: totalUsersCount }],
+      totalTests: [{ count: totalTests }],
+      anemicCases: [{ count: anemicCases }],
+      todayTests: [{ count: todayTests }],
+      weeklyTests: weeklyTests.map(item => ({ date: item._id, count: item.count })),
+      userActivity: userActivity.map(item => ({ username: item._id, tests: item.tests, last_test: item.last_test })),
+      predictionTrends: predictionTrends.map(item => ({ prediction: item._id, count: item.count })),
+      monthlyStats: monthlyStats.map(item => ({ month: item._id, count: item.count }))
+    };
+  } catch (err) {
+    console.error('❌ Error getting system stats:', err);
+    throw err;
+  }
+}
+
+// =============================================
+// MIDDLEWARE
+// =============================================
+
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Session configuration
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'anemia-malaria-secret-2024',
+  resave: false,
+  saveUninitialized: true,
+  store: MongoStore.create({ mongoUrl: MONGODB_URI, touchAfter: 24 * 3600 }),
+  cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
+}));
+
+// Multer configuration
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, path.join(__dirname, 'uploads')),
+  filename: (req, file, cb) => cb(null, `${file.fieldname}-${Date.now()}${path.extname(file.originalname)}`)
+});
+
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    cb(null, mimetype && extname);
+  },
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 }
+});
+
+// Authentication middleware
+function requireAuth(req, res, next) {
+  if (!req.session.loggedIn) return res.redirect('/login');
+  next();
+}
+
+function requireRole(role) {
+  return (req, res, next) => {
+    if (!req.session.loggedIn) return res.redirect('/login');
+    if (req.session.role !== role) return res.status(403).send('Access Denied');
+    next();
+  };
+}
+
+const requireAdmin = requireRole('admin');
+
+// =============================================
+// ROUTES
+// =============================================
+
+// Home and Auth Routes
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'home.html')));
+app.get('/login', (req, res) => req.session.loggedIn ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'login.html')));
+app.get('/signup', (req, res) => req.session.loggedIn ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'signup.html')));
+
+app.post('/signup', async (req, res) => {
+  try {
+    const { username, password, full_name, role } = req.body;
+    const existingUser = await User.findOne({ username });
+    if (existingUser) return res.redirect('/signup?error=User already exists');
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await new User({ username, password: hashedPassword, full_name, role, is_active: true }).save();
+    res.redirect(`/login?prefill=true&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&loginType=${role}`);
+  } catch (error) {
+    console.error('Signup error:', error);
+    res.redirect('/signup?error=Signup failed');
+  }
+});
+
+app.post('/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const user = await User.findOne({ username });
+    if (!user) return res.redirect('/login?error=Invalid username or password');
+
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) return res.redirect('/login?error=Invalid username or password');
+
+    req.session.loggedIn = true;
+    req.session.username = user.username;
+    req.session.role = user.role;
+    return res.redirect('/dashboard');
+  } catch (error) {
+    console.error('Login error:', error);
+    return res.redirect('/login?error=Login failed');
+  }
+});
+
+// Dashboard Routes
+app.get('/dashboard', requireAuth, (req, res) => {
+  if (req.session.role === 'doctor') return res.redirect(`/doctor/${req.session.doctorId}`);
+  if (req.session.role === 'admin') return res.redirect('/admin');
+  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
+
+// Admin Routes
+app.get('/admin', requireAdmin, async (req, res) => {
+  try {
+    const stats = await getSystemStats();
+    const allResults = await getAllPatientResults();
+    const allAssessments = await DoctorAssessment.find().sort({ timestamp: -1 }).lean();
+    
+    // Generate admin dashboard HTML
+    const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Admin Dashboard</title>
+      <style>
+        /* Your admin dashboard styles here */
+      </style>
+    </head>
+    <body>
+      <h1>Admin Dashboard</h1>
+      <p>Total Users: ${stats.totalUsers[0].count}</p>
+      <p>Total Tests: ${stats.totalTests[0].count}</p>
+      <!-- More dashboard content -->
+    </body>
+    </html>
+    `;
+    
+    res.send(html);
+  } catch (error) {
+    console.error('Error loading admin dashboard:', error);
+    res.status(500).send('Error loading admin dashboard');
+  }
+});
+
+// Add other routes (patient, doctor, API) here...
+
+// =============================================
+// SERVER START
+// =============================================
+
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📱 Medical Screening System is ready!`);
+  console.log(`🌐 Access the application at: http://localhost:${PORT}`);
+});

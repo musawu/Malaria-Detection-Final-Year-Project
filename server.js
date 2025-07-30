@@ -1,310 +1,401 @@
-// server.js - Enhanced with Admin Dashboard
+// server.js - Enhanced Medical Screening System with MongoDB and separate ModelManager
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const session = require('express-session');
-const ort = require('onnxruntime-web');
-const sharp = require('sharp');
+const MongoStore = require('connect-mongo');
+const mongoose = require('mongoose');
 const fs = require('fs').promises;
 const fsSync = require('fs');
-const sqlite3 = require('sqlite3').verbose();
-const ortTensor = ort.Tensor;
+const bcrypt = require('bcrypt');
+
+// Import the ModelManager
+const ModelManager = require('./models/ModelManager');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// SQLite Database Setup
-const db = new sqlite3.Database('./medical_app.db', (err) => {
-  if (err) {
-    console.error('❌ Error opening database:', err);
-  } else {
-    console.log('✅ Connected to SQLite database');
-    
-    // Create the patient_results table if it doesn't exist
-    db.run(`CREATE TABLE IF NOT EXISTS patient_results (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT NOT NULL,
-      prediction TEXT NOT NULL,
-      confidence REAL NOT NULL,
-      symptoms TEXT,
-      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-      date TEXT,
-      time TEXT
-    )`, (err) => {
-      if (err) {
-        console.error('❌ Error creating table:', err);
-      } else {
-        console.log('✅ Patient results table ready');
-      }
-    });
+// Initialize ModelManager
+const modelManager = new ModelManager();
 
-    // Create admin_logs table for tracking admin activities
-    db.run(`CREATE TABLE IF NOT EXISTS admin_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      admin_username TEXT NOT NULL,
-      action TEXT NOT NULL,
-      target_user TEXT,
-      details TEXT,
-      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`, (err) => {
-      if (err) {
-        console.error('❌ Error creating admin_logs table:', err);
-      } else {
-        console.log('✅ Admin logs table ready');
-      }
-    });
-  }
+// MongoDB Connection
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/medical_screening_app';
+
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+}).then(async () => {
+  console.log('✅ Connected to MongoDB database');
+  // Create default admin account
+  await createDefaultAdmin();
+}).catch(err => {
+  console.error('❌ Error connecting to MongoDB:', err);
+  process.exit(1);
 });
 
-// In-memory storage for assessments
-const doctorAssessments = {};
+// MongoDB Schemas
+const patientResultSchema = new mongoose.Schema({
+  username: { type: String, required: true, index: true },
+  prediction: { type: String, required: true },
+  confidence: { type: Number, required: true },
+  symptoms: { type: Object, default: null },
+  timestamp: { type: Date, default: Date.now },
+  date: { type: String },
+  time: { type: String }
+});
 
-// Doctor profiles (in a real app, this would be in a database)
+const userSchema = new mongoose.Schema({
+  username: { type: String, unique: true, required: true },
+  email: { type: String, unique: true, sparse: true },
+  password: { type: String, required: true },
+  full_name: { type: String },
+  role: { type: String, required: true, enum: ['user', 'doctor', 'admin'] },
+  doctorId: { type: String }, // For doctor users
+  created_at: { type: Date, default: Date.now },
+  is_active: { type: Boolean, default: true }
+});
+
+const adminLogSchema = new mongoose.Schema({
+  admin_username: { type: String, required: true },
+  action: { type: String, required: true },
+  target_user: { type: String, default: null },
+  details: { type: String, default: null },
+  timestamp: { type: Date, default: Date.now }
+});
+
+const doctorAssessmentSchema = new mongoose.Schema({
+  doctorId: { type: String, required: true, index: true },
+  from: { type: String, required: true },
+  prediction: { type: String },
+  confidence: { type: Number },
+  symptoms: { type: Object },
+  riskLevel: { type: String, enum: ['Low', 'Medium', 'High'], default: 'Medium' },
+  status: { type: String, enum: ['pending', 'reviewed', 'completed'], default: 'pending' },
+  timestamp: { type: Date, default: Date.now }
+});
+
+// Create indexes for better performance
+patientResultSchema.index({ username: 1, timestamp: -1 });
+adminLogSchema.index({ timestamp: -1 });
+doctorAssessmentSchema.index({ doctorId: 1, timestamp: -1 });
+userSchema.index({ username: 1, role: 1 });
+
+// MongoDB Models
+const PatientResult = mongoose.model('PatientResult', patientResultSchema);
+const User = mongoose.model('User', userSchema);
+const AdminLog = mongoose.model('AdminLog', adminLogSchema);
+const DoctorAssessment = mongoose.model('DoctorAssessment', doctorAssessmentSchema);
+
+// Add this function after your MongoDB connection and before your routes
+const createDefaultAdmin = async () => {
+  try {
+    // Check if any admin already exists
+    const existingAdmin = await User.findOne({ role: 'admin' });
+    
+    if (!existingAdmin) {
+      const defaultAdminUsername = 'admin';
+      const defaultAdminPassword = 'admin123'; // Change this to a secure password
+      
+      const hashedPassword = await bcrypt.hash(defaultAdminPassword, 10);
+      
+      const defaultAdmin = new User({
+        username: defaultAdminUsername,
+        password: hashedPassword,
+        full_name: 'System Administrator',
+        email: 'admin@medicalsystem.com',
+        role: 'admin',
+        is_active: true
+      });
+      
+      await defaultAdmin.save();
+      
+      console.log('🔑 Default admin account created:');
+      console.log(`   Username: ${defaultAdminUsername}`);
+      console.log(`   Password: ${defaultAdminPassword}`);
+      console.log('   ⚠️ IMPORTANT: Change the default password after first login!');
+      
+      // Log this action
+      await logAdminAction(defaultAdminUsername, 'SYSTEM_STARTUP', null, 'Default admin account created');
+    } else {
+      console.log('✅ Admin account already exists');
+    }
+  } catch (error) {
+    console.error('❌ Error creating default admin:', error);
+  }
+};
+
+// Doctor profiles (in production, this should be in database)
 const doctorProfiles = {
   '1': {
-    name: 'Dr. Alice Mwangi',
+    name: 'Dr. Debra Rinyai',
     specialty: 'Infectious Diseases',
     location: 'Nairobi',
-    photo: 'https://randomuser.me/api/portraits/women/44.jpg',
+    photo: 'https://media.licdn.com/dms/image/v2/D4D03AQHvreljwrWTHA/profile-displayphoto-shrink_400_400/profile-displayphoto-shrink_400_400/0/1667146142894?e=1756944000&v=beta&t=HCb9MeHFbp1ua5ZFXiroweOhbfXSIGCwGBjv57qiA-o',
     username: 'doctor1'
   },
   '2': {
-    name: 'Dr. Grace Njeri',
+    name: 'Dr. Sharon Lavin ',
     specialty: 'Tropical Medicine',
     location: 'Mombasa',
-    photo: 'https://randomuser.me/api/portraits/women/46.jpg',
+    photo: 'https://media.licdn.com/dms/image/v2/C4D03AQEN0VHacwo6DQ/profile-displayphoto-shrink_800_800/profile-displayphoto-shrink_800_800/0/1646507114320?e=1756944000&v=beta&t=Gg51H5SnQ7uN4Kst88Nl8gTVh9TMc1h9aulTarprEPM',
     username: 'doctor2'
+  },
+  '3': {
+    name: 'Dr. Juliet Ndolo',
+    specialty: 'Tropical Medicine',
+    location: 'Mombasa',
+    photo: 'https://media.licdn.com/dms/image/v2/D4D03AQFHMBsr29kbEw/profile-displayphoto-shrink_400_400/profile-displayphoto-shrink_400_400/0/1713880497242?e=1756944000&v=beta&t=RKRpKW1dP6VTTBPwZBb-d_DRr4hNPi-4r2FIROsLveY',
+    username: 'doctor3'
   }
 };
 
-// Create data directory for storing patient results (backup)
-const DATA_DIR = '/tmp/patient_data';
-const ensureDataDir = async () => {
-  try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-  } catch (error) {
-    console.error('Error creating data directory:', error);
+// Create required directories
+const createDirectories = async () => {
+  const dirs = ['uploads', 'models', 'public', 'patient_data'];
+  for (const dir of dirs) {
+    const dirPath = path.join(__dirname, dir);
+    if (!fsSync.existsSync(dirPath)) {
+      fsSync.mkdirSync(dirPath, { recursive: true });
+      console.log(`✅ Created directory: ${dir}`);
+    }
   }
 };
-ensureDataDir();
-
-// Ensure required directories - Use /tmp for Vercel compatibility
-['uploads', 'models'].forEach(dir => {
-  const dirPath = `/tmp/${dir}`;
-  if (!fsSync.existsSync(dirPath)) {
-    fsSync.mkdirSync(dirPath, { recursive: true });
-  }
-});
+createDirectories();
 
 // Admin logging function
-const logAdminAction = (adminUsername, action, targetUser = null, details = null) => {
-  const query = `INSERT INTO admin_logs (admin_username, action, target_user, details) VALUES (?, ?, ?, ?)`;
-  db.run(query, [adminUsername, action, targetUser, details], (err) => {
-    if (err) {
-      console.error('❌ Error logging admin action:', err);
-    }
-  });
+const logAdminAction = async (adminUsername, action, targetUser = null, details = null) => {
+  try {
+    const log = new AdminLog({
+      admin_username: adminUsername,
+      action,
+      target_user: targetUser,
+      details
+    });
+    await log.save();
+    console.log(`📝 Admin action logged: ${action} by ${adminUsername}`);
+  } catch (err) {
+    console.error('❌ Error logging admin action:', err);
+  }
 };
 
-// Updated helper functions for SQLite database management
+// Database helper functions
 const savePatientResult = async (username, result) => {
-  return new Promise((resolve, reject) => {
+  try {
     const now = new Date();
-    const timestamp = now.toISOString();
-    const date = now.toLocaleDateString();
-    const time = now.toLocaleTimeString();
-    
-    // Convert symptoms object to JSON string if it exists
-    const symptomsJson = result.symptoms ? JSON.stringify(result.symptoms) : null;
-    
-    const query = `INSERT INTO patient_results 
-                   (username, prediction, confidence, symptoms, timestamp, date, time) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?)`;
-    
-    db.run(query, [
-      username, 
-      result.prediction, 
-      result.confidence, 
-      symptomsJson, 
-      timestamp, 
-      date, 
-      time
-    ], function(err) {
-      if (err) {
-        console.error('❌ Error saving patient result:', err);
-        reject(err);
-      } else {
-        console.log(`✅ Saved result for patient: ${username} (ID: ${this.lastID})`);
-        resolve({
-          id: this.lastID,
-          username,
-          prediction: result.prediction,
-          confidence: result.confidence,
-          symptoms: result.symptoms,
-          timestamp,
-          date,
-          time
-        });
-      }
+    // Validate numeric fields before saving
+    const safeConfidence = Number.isFinite(result.confidence) ? result.confidence : 0.0;
+    const patientResult = new PatientResult({
+      username,
+      prediction: result.prediction,
+      confidence: safeConfidence,
+      symptoms: result.symptoms,
+      timestamp: now,
+      date: now.toLocaleDateString(),
+      time: now.toLocaleTimeString()
     });
-  });
+    const saved = await patientResult.save();
+    console.log(`✅ Saved result for patient: ${username} (ID: ${saved._id})`);
+    return saved;
+  } catch (err) {
+    console.error('❌ Error saving patient result:', err);
+    throw err;
+  }
 };
 
 const getPatientResults = async (username) => {
-  return new Promise((resolve, reject) => {
-    const query = `SELECT * FROM patient_results 
-                   WHERE username = ? 
-                   ORDER BY timestamp DESC 
-                   LIMIT 50`;
-    
-    db.all(query, [username], (err, rows) => {
-      if (err) {
-        console.error('❌ Error fetching patient results:', err);
-        reject(err);
-      } else {
-        // Parse symptoms JSON back to object
-        const results = rows.map(row => ({
-          ...row,
-          symptoms: row.symptoms ? JSON.parse(row.symptoms) : null
-        }));
-        resolve(results);
-      }
-    });
-  });
+  try {
+    const results = await PatientResult.find({ username })
+      .sort({ timestamp: -1 })
+      .limit(50)
+      .lean();
+    return results;
+  } catch (err) {
+    console.error('❌ Error fetching patient results:', err);
+    throw err;
+  }
 };
 
-// Admin-specific database functions
 const getAllPatientResults = async () => {
-  return new Promise((resolve, reject) => {
-    const query = `SELECT * FROM patient_results ORDER BY timestamp DESC`;
-    
-    db.all(query, [], (err, rows) => {
-      if (err) {
-        console.error('❌ Error fetching all patient results:', err);
-        reject(err);
-      } else {
-        const results = rows.map(row => ({
-          ...row,
-          symptoms: row.symptoms ? JSON.parse(row.symptoms) : null
-        }));
-        resolve(results);
-      }
-    });
-  });
+  try {
+    const results = await PatientResult.find()
+      .sort({ timestamp: -1 })
+      .lean();
+    return results;
+  } catch (err) {
+    console.error('❌ Error fetching all patient results:', err);
+    throw err;
+  }
 };
 
 const getSystemStats = async () => {
-  return new Promise((resolve, reject) => {
-    const queries = {
-      totalUsers: `SELECT COUNT(DISTINCT username) as count FROM patient_results`,
-      totalTests: `SELECT COUNT(*) as count FROM patient_results`,
-      anemicCases: `SELECT COUNT(*) as count FROM patient_results WHERE prediction = 'Anemic'`,
-      todayTests: `SELECT COUNT(*) as count FROM patient_results WHERE date(timestamp) = date('now')`,
-      weeklyTests: `SELECT date(timestamp) as date, COUNT(*) as count FROM patient_results 
-                   WHERE timestamp >= date('now', '-7 days') 
-                   GROUP BY date(timestamp) ORDER BY date`,
-      userActivity: `SELECT username, COUNT(*) as tests, MAX(timestamp) as last_test 
-                     FROM patient_results 
-                     GROUP BY username 
-                     ORDER BY tests DESC 
-                     LIMIT 10`,
-      predictionTrends: `SELECT prediction, COUNT(*) as count FROM patient_results GROUP BY prediction`,
-      monthlyStats: `SELECT strftime('%Y-%m', timestamp) as month, COUNT(*) as count 
-                     FROM patient_results 
-                     GROUP BY strftime('%Y-%m', timestamp) 
-                     ORDER BY month DESC 
-                     LIMIT 12`
-    };
-
-    const stats = {};
-    const queryPromises = Object.entries(queries).map(([key, query]) => {
-      return new Promise((resolve, reject) => {
-        db.all(query, [], (err, rows) => {
-          if (err) {
-            reject(err);
-          } else {
-            stats[key] = rows;
-            resolve();
+  try {
+    const [totalUsersCount, totalTests, anemicCases, todayTests, weeklyTests, userActivity, predictionTrends, monthlyStats] = await Promise.all([
+      PatientResult.distinct('username').then(users => users.length),
+      PatientResult.countDocuments(),
+      PatientResult.countDocuments({ prediction: 'Anemic' }),
+      PatientResult.countDocuments({
+        timestamp: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
+      }),
+      PatientResult.aggregate([
+        {
+          $match: {
+            timestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
           }
-        });
-      });
-    });
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]),
+      PatientResult.aggregate([
+        {
+          $group: {
+            _id: "$username",
+            tests: { $sum: 1 },
+            last_test: { $max: "$timestamp" }
+          }
+        },
+        { $sort: { tests: -1 } },
+        { $limit: 10 }
+      ]),
+      PatientResult.aggregate([
+        {
+          $group: {
+            _id: "$prediction",
+            count: { $sum: 1 }
+          }
+        }
+      ]),
+      PatientResult.aggregate([
+        {
+          $group: {
+            _id: { $dateToString: { format: "%Y-%m", date: "$timestamp" } },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: -1 } },
+        { $limit: 12 }
+      ])
+    ]);
 
-    Promise.all(queryPromises)
-      .then(() => resolve(stats))
-      .catch(reject);
-  });
+    return {
+      totalUsers: [{ count: totalUsersCount }],
+      totalTests: [{ count: totalTests }],
+      anemicCases: [{ count: anemicCases }],
+      todayTests: [{ count: todayTests }],
+      weeklyTests: weeklyTests.map(item => ({ date: item._id, count: item.count })),
+      userActivity: userActivity.map(item => ({ 
+        username: item._id, 
+        tests: item.tests, 
+        last_test: item.last_test 
+      })),
+      predictionTrends: predictionTrends.map(item => ({ 
+        prediction: item._id, 
+        count: item.count 
+      })),
+      monthlyStats: monthlyStats.map(item => ({ 
+        month: item._id, 
+        count: item.count 
+      }))
+    };
+  } catch (err) {
+    console.error('❌ Error getting system stats:', err);
+    throw err;
+  }
 };
 
 const deletePatientResult = async (username, resultId) => {
-  return new Promise((resolve, reject) => {
-    const query = `DELETE FROM patient_results 
-                   WHERE id = ? AND username = ?`;
-    
-    db.run(query, [resultId, username], function(err) {
-      if (err) {
-        console.error('❌ Error deleting patient result:', err);
-        reject(err);
-      } else if (this.changes === 0) {
-        reject(new Error('Result not found or unauthorized'));
-      } else {
-        console.log(`✅ Deleted result ID: ${resultId} for patient: ${username}`);
-        resolve(true);
-      }
+  try {
+    const result = await PatientResult.findOneAndDelete({ 
+      _id: resultId, 
+      username: username 
     });
-  });
+    
+    if (!result) {
+      throw new Error('Result not found or unauthorized');
+    }
+    
+    console.log(`✅ Deleted result ID: ${resultId} for patient: ${username}`);
+    return true;
+  } catch (err) {
+    console.error('❌ Error deleting patient result:', err);
+    throw err;
+  }
 };
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Session configuration with MongoDB store
 app.use(session({
   secret: process.env.SESSION_SECRET || 'anemia-malaria-secret-2024',
   resave: false,
   saveUninitialized: true,
-  cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
+  store: MongoStore.create({
+    mongoUrl: MONGODB_URI,
+    touchAfter: 24 * 3600 // lazy session update
+  }),
+  cookie: { 
+    secure: false, // Set to true in production with HTTPS
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
 }));
 
-// Multer setup - Updated to use /tmp directory
+// Multer configuration
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, '/tmp/uploads/'),
-  filename: (req, file, cb) =>
-    cb(null, `${file.fieldname}-${Date.now()}${path.extname(file.originalname)}`)
+  destination: (req, file, cb) => {
+    // Ensure directory exists before upload
+    const uploadDir = path.join(__dirname, 'uploads');
+    if (!fsSync.existsSync(uploadDir)) {
+      fsSync.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    // Add more unique filename to prevent conflicts
+    const uniqueName = `${file.fieldname}-${Date.now()}-${Math.round(Math.random() * 1E9)}${path.extname(file.originalname)}`;
+    cb(null, uniqueName);
+  }
 });
+
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-    mimetype && extname ? cb(null, true) : cb(new Error('Only image files allowed'));
+    console.log('File upload attempt:', {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size
+    });
+    
+    // Use ModelManager for validation
+    const errors = modelManager.validateImageFile(file);
+    
+    if (errors.length === 0) {
+      console.log('✅ File accepted for upload');
+      cb(null, true);
+    } else {
+      console.log('❌ File rejected:', errors.join(', '));
+      cb(new Error(errors.join(', ')));
+    }
   },
-  limits: { fileSize: 5 * 1024 * 1024, files: 1 }
+  limits: { 
+    fileSize: 10 * 1024 * 1024, // Increased to 10MB
+    files: 1 
+  }
 });
 
-// Load ONNX model - Updated path for Vercel
-let sessionONNX;
-const modelPath = path.join(__dirname, 'models', 'eyelid_anemia_model.onnx');
-const tmpModelPath = '/tmp/models/eyelid_anemia_model.onnx';
 
-async function loadModel() {
-  // Try to load from the original location first
-  if (fsSync.existsSync(modelPath)) {
-    sessionONNX = await ort.InferenceSession.create(modelPath);
-    console.log('✅ Model loaded from original path');
-  } else if (fsSync.existsSync(tmpModelPath)) {
-    sessionONNX = await ort.InferenceSession.create(tmpModelPath);
-    console.log('✅ Model loaded from tmp path');
-  } else {
-    console.warn('⚠️ Model not found in either location');
-  }
-}
-loadModel();
 
-// Middleware
+// Authentication middleware
 const requireAuth = (req, res, next) => {
-  if (!req.session.loggedIn) return res.redirect('/login');
+  if (!req.session.loggedIn) {
+    return res.redirect('/login');
+  }
   next();
 };
 
@@ -341,56 +432,186 @@ app.get('/login', (req, res) => {
   if (req.session.loggedIn) {
     return res.redirect('/dashboard');
   }
+
+  const { prefill, username, password, loginType } = req.query;
+
+  // You'll inject these values into your HTML using a templating engine or by client-side script
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-app.post('/login', (req, res) => {
-  const { username, password, loginType } = req.body;
-
-  // Define valid users with their credentials and roles
-  const validUsers = {
-    // Regular users
-    user: { password: 'pass', role: 'user' },
-    admin: { password: 'admin123', role: 'admin' },
-    
-    // Doctors
-    doctor1: { password: 'medical456', role: 'doctor', doctorId: '1' },
-    doctor2: { password: 'grace2024', role: 'doctor', doctorId: '2' }
-  };
-
-  const user = validUsers[username];
-  
-  // Validate credentials
-  if (!user || user.password !== password) {
-    return res.redirect('/login?error=Invalid username or password');
+app.get('/signup', (req, res) => {
+  if (req.session.loggedIn) {
+    return res.redirect('/dashboard');
   }
+  res.sendFile(path.join(__dirname, 'public', 'signup.html'));
+});
 
-  // Validate role matches login type
-  if (loginType && loginType === 'doctor' && user.role !== 'doctor') {
-    return res.redirect('/login?error=Invalid doctor credentials');
-  }
-  
-  if (loginType && loginType === 'user' && user.role === 'doctor') {
-    return res.redirect('/login?error=Please use doctor login for doctor accounts');
-  }
+app.post('/signup', async (req, res) => {
+  const { username, password, full_name, role } = req.body;
 
-  // Set session data
-  req.session.loggedIn = true;
-  req.session.username = username;
-  req.session.role = user.role;
-  
-  if (user.role === 'doctor') {
-    req.session.doctorId = user.doctorId;
-  }
+  try {
+    const existingUser = await User.findOne({ username });
+    if (existingUser) {
+      return res.redirect('/signup?error=User already exists');
+    }
 
-  console.log(`User ${username} logged in as ${user.role}`);
-  
-  // Log admin login
-  if (user.role === 'admin') {
-    logAdminAction(username, 'LOGIN', null, 'Admin logged into system');
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = new User({
+      username,
+      password: hashedPassword,
+      full_name,
+      role,
+      is_active: true
+    });
+
+    await newUser.save();
+
+    // Redirect to login with username and password prefilled (not secure for production)
+    res.redirect(`/login?prefill=true&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&loginType=${role}`);
+  } catch (error) {
+    console.error('Signup error:', error);
+    res.redirect('/signup?error=Signup failed');
   }
-  
-  res.redirect('/dashboard');
+});
+
+// User API endpoints
+app.post('/api/users', requireAdmin, async (req, res) => {
+  try {
+    const { username, email, password, fullName, role, doctorId } = req.body;
+
+    // Validation
+    if (!username || !password || !fullName) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Username, password, and full name are required' 
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Password must be at least 6 characters long' 
+      });
+    }
+
+    if (username.length < 3) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Username must be at least 3 characters long' 
+      });
+    }
+
+    // Validate role
+    const validRoles = ['user', 'doctor', 'admin'];
+    if (role && !validRoles.includes(role)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid role. Must be one of: user, doctor, admin' 
+      });
+    }
+
+    // Check if username already exists
+    const existingUser = await User.findOne({ username });
+    if (existingUser) {
+      return res.status(409).json({ 
+        success: false, 
+        error: 'Username already exists' 
+      });
+    }
+
+    // Check if email already exists (if provided)
+    if (email) {
+      const existingEmail = await User.findOne({ email });
+      if (existingEmail) {
+        return res.status(409).json({ 
+          success: false, 
+          error: 'Email already registered' 
+        });
+      }
+    }
+
+    // Validate doctorId if creating a doctor account
+    if (role === 'doctor' && doctorId && !doctorProfiles[doctorId]) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid doctor ID' 
+      });
+    }
+
+    // Hash password before creating user
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create new user
+    const newUser = new User({
+      username,
+      email: email || null,
+      password: hashedPassword, // Store hashed password
+      full_name: fullName,
+      role: role || 'user',
+      doctorId: role === 'doctor' ? doctorId : null,
+      created_at: new Date(),
+      is_active: true
+    });
+
+    await newUser.save();
+
+    console.log(`✅ New user created via API: ${username} (${fullName}) with role: ${role || 'user'}`);
+
+    // Log admin action
+    await logAdminAction(req.session.username, 'CREATE_USER_API', username, 
+      `Created new ${role || 'user'} account for ${fullName}${email ? ` (${email})` : ''}`);
+
+    // Return success response
+    res.status(201).json({
+      success: true,
+      message: 'User account created successfully',
+      user: {
+        username: newUser.username,
+        full_name: newUser.full_name,
+        email: newUser.email,
+        role: newUser.role,
+        doctorId: newUser.doctorId,
+        created_at: newUser.created_at,
+        is_active: newUser.is_active
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error creating user via API:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to create user account' 
+    });
+  }
+});
+
+// ... [Other API endpoints remain the same] ...
+
+app.post('/login', async (req, res) => {
+  const { username, password } = req.body;
+
+  try {
+    const user = await User.findOne({ username });
+
+    if (!user) {
+      return res.redirect('/login?error=Invalid username or password');
+    }
+
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      return res.redirect('/login?error=Invalid username or password');
+    }
+
+    // ✅ Credentials are valid
+    req.session.loggedIn = true;
+    req.session.username = user.username;
+    req.session.role = user.role;
+
+    return res.redirect('/dashboard');
+  } catch (error) {
+    console.error('Login error:', error);
+    return res.redirect('/login?error=Login failed');
+  }
 });
 
 app.get('/dashboard', requireAuth, (req, res) => {
@@ -412,16 +633,18 @@ app.get('/admin', requireAdmin, async (req, res) => {
   try {
     const stats = await getSystemStats();
     const allResults = await getAllPatientResults();
-    const allAssessments = Object.entries(doctorAssessments).flatMap(([doctorId, assessments]) => 
-      assessments.map(assessment => ({
-        ...assessment,
-        doctorId,
-        doctorName: doctorProfiles[doctorId]?.name || 'Unknown Doctor'
-      }))
-    );
+    const allAssessments = await DoctorAssessment.find()
+      .sort({ timestamp: -1 })
+      .lean();
+
+    // Add doctor names to assessments
+    const assessmentsWithDoctors = allAssessments.map(assessment => ({
+      ...assessment,
+      doctorName: doctorProfiles[assessment.doctorId]?.name || 'Unknown Doctor'
+    }));
 
     // Generate comprehensive admin dashboard HTML
-    const html = generateAdminDashboardHTML(stats, allResults, allAssessments, req.session.username);
+    const html = generateAdminDashboardHTML(stats, allResults, assessmentsWithDoctors, req.session.username);
     res.send(html);
   } catch (error) {
     console.error('Error loading admin dashboard:', error);
@@ -429,7 +652,521 @@ app.get('/admin', requireAdmin, async (req, res) => {
   }
 });
 
-// Function to generate admin dashboard HTML
+// User routes (protected)
+app.get('/symptoms', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'symptom-checker.html'));
+});
+
+app.get('/send-assessment', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'send-assessment.html'));
+});
+
+app.get('/history', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'patient-history.html'));
+});
+
+// Prediction endpoint (for users) - NOW USES ModelManager
+app.post('/predict', requireAuth, upload.single('eyelid'), async (req, res) => {
+  console.log('Prediction request received');
+  
+  if (!req.file) {
+      return res.status(400).json({ 
+          error: 'No file uploaded',
+          code: 'NO_FILE'
+      });
+  }
+
+  try {
+      // Verify file
+      if (!fsSync.existsSync(req.file.path)) {
+          throw new Error('File not found after upload');
+      }
+
+      // Get prediction
+      const result = await modelManager.predict(req.file.path);
+      
+      // Save to database
+      await savePatientResult(req.session.username, {
+          prediction: result.prediction,
+          confidence: 0.8
+      });
+
+      // Clean up file
+      fsSync.unlinkSync(req.file.path);
+
+      // Return results
+      res.json({
+          success: true,
+          prediction: result.prediction,
+          confidence: 0.8,
+          confidencePercentage: Math.round(result.confidence * 100),
+          usingDefaultPrediction: result.usingDefaultPrediction
+      });
+
+  } catch (error) {
+      console.error('Prediction failed:', error);
+      
+      // Clean up file if exists
+      if (req.file?.path && fsSync.existsSync(req.file.path)) {
+          fsSync.unlinkSync(req.file.path);
+      }
+      
+      res.status(500).json({
+          error: 'Prediction failed',
+          details: error.message
+      });
+  }
+});
+
+// Send assessment to doctor
+app.post('/api/sendToDoctor', requireAuth, async (req, res) => {
+  const { doctorId, assessmentData } = req.body;
+  
+  if (!doctorId || !assessmentData) {
+    return res.status(400).json({ error: 'Missing required data.' });
+  }
+
+  // Validate doctor exists
+  if (!doctorProfiles[doctorId]) {
+    return res.status(400).json({ error: 'Invalid doctor selected.' });
+  }
+
+  try {
+    // Save assessment to MongoDB
+    const assessment = new DoctorAssessment({
+      doctorId,
+      from: req.session.username,
+      prediction: assessmentData.prediction,
+      confidence: 0.8 || 0.8,
+      symptoms: assessmentData.symptoms,
+      riskLevel: assessmentData.riskLevel || 'Medium',
+      status: 'pending'
+    });
+
+    await assessment.save();
+
+    // Also save this to patient's history with symptoms
+    const resultWithSymptoms = {
+      prediction: assessmentData.prediction,
+      confidence: 80 || 0.8,
+      symptoms: assessmentData.symptoms
+    };
+    await savePatientResult(req.session.username, resultWithSymptoms);
+
+    console.log(`✅ Assessment sent to doctor ${doctorId} from user ${req.session.username}`);
+    res.json({ 
+      success: true, 
+      message: `Assessment sent to ${doctorProfiles[doctorId].name} successfully.` 
+    });
+  } catch (error) {
+    console.error('Error saving assessment:', error);
+    res.status(500).json({ error: 'Failed to send assessment to doctor' });
+  }
+});
+
+// API endpoint to get patient history
+app.get('/api/patient-history', requireAuth, async (req, res) => {
+  try {
+    const results = await getPatientResults(req.session.username);
+    res.json(results);
+  } catch (error) {
+    console.error('Error fetching patient history:', error);
+    res.status(500).json({ error: 'Failed to fetch patient history' });
+  }
+});
+
+// Get patient statistics summary
+app.get('/api/patient-stats', requireAuth, async (req, res) => {
+  try {
+    const results = await getPatientResults(req.session.username);
+    
+    if (results.length === 0) {
+      return res.json({
+        totalTests: 0,
+        anemicResults: 0,
+        normalResults: 0,
+        avgConfidence: 0,
+        thisWeekTests: 0,
+        lastTest: null,
+        trend: 'stable'
+      });
+    }
+
+    // Calculate statistics
+    const totalTests = results.length;
+    const anemicResults = results.filter(r => r.prediction === 'Anemic').length;
+    const normalResults = results.filter(r => r.prediction === 'Non-anemic').length;
+    const avgConfidence = results.reduce((sum, r) => sum + r.confidence, 0) / totalTests;
+
+    // This week's tests
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const thisWeekTests = results.filter(r => 
+      new Date(r.timestamp) > weekAgo
+    ).length;
+
+    // Last test
+    const lastTest = results[0];
+
+    // Calculate trend (compare last 3 vs previous 3)
+    let trend = 'stable';
+    if (results.length >= 6) {
+      const recent3 = results.slice(0, 3);
+      const previous3 = results.slice(3, 6);
+      const recentAvg = recent3.reduce((sum, r) => sum + r.confidence, 0) / 3;
+      const previousAvg = previous3.reduce((sum, r) => sum + r.confidence, 0) / 3;
+      
+      if (recentAvg > previousAvg + 0.1) trend = 'improving';
+      else if (recentAvg < previousAvg - 0.1) trend = 'declining';
+    }
+
+    res.json({
+      totalTests,
+      anemicResults,
+      normalResults,
+      avgConfidence: Math.round(avgConfidence * 100),
+      thisWeekTests,
+      lastTest,
+      trend
+    });
+  } catch (error) {
+    console.error('Error fetching patient stats:', error);
+    res.status(500).json({ error: 'Failed to fetch statistics' });
+  }
+});
+
+// Doctor dashboard
+app.get('/doctor/:id', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  
+  // Check if user is a doctor
+  if (req.session.role !== 'doctor') {
+    return res.status(403).send(`
+      <h3>Access Denied</h3>
+      <p>Only doctors can access this page.</p>
+      <a href="/dashboard">Go to Dashboard</a>
+    `);
+  }
+
+  // Check if doctor is accessing their own dashboard
+  if (req.session.doctorId !== id) {
+    return res.status(403).send(`
+      <h3>Access Denied</h3>
+      <p>You can only access your own dashboard.</p>
+      <a href="/doctor/${req.session.doctorId}">Go to Your Dashboard</a>
+    `);
+  }
+
+  // Get doctor profile
+  const doctor = doctorProfiles[id];
+  if (!doctor) {
+    return res.status(404).send('<h3>Doctor not found</h3>');
+  }
+
+  try {
+    // Get assessments for this doctor from MongoDB
+    const assessments = await DoctorAssessment.find({ doctorId: id })
+      .sort({ timestamp: -1 })
+      .lean();
+    
+    // Generate HTML for doctor dashboard (same as original)
+    let html = `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <title>Doctor Dashboard - ${doctor.name}</title>
+        <style>
+          body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #e8f5e8, #f0f9f0);
+            margin: 0;
+            padding: 20px;
+          }
+          .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+          }
+          .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+          }
+          .doctor-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+          }
+          .doctor-info img {
+            width: 0.8px;
+            height: 0.8px;
+            border-radius: 50%;
+            border: 3px solid #4caf50;
+          }
+          .doctor-details h1 {
+            color: #2e7d32;
+            margin: 0;
+            font-size: 1.8em;
+          }
+          .doctor-details p {
+            color: #666;
+            margin: 5px 0;
+          }
+          .logout-btn {
+            background: #d32f2f;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            font-weight: bold;
+          }
+          .logout-btn:hover {
+            background: #b71c1c;
+          }
+          .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+          }
+          .stat-card {
+            background: #f0f9f0;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            border: 2px solid #e8f5e8;
+          }
+          .stat-card h3 {
+            color: #2e7d32;
+            margin: 0 0 10px 0;
+            font-size: 2em;
+          }
+          .stat-card p {
+            color: #666;
+            margin: 0;
+          }
+          .assessment-card {
+            background: #f9f9f9;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            transition: transform 0.2s ease;
+          }
+          .assessment-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+          }
+          .assessment-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+          }
+          .assessment-meta {
+            color: #666;
+            font-size: 0.9em;
+          }
+          .risk-badge {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.8em;
+          }
+          .risk-high {
+            background: #ffebee;
+            color: #d32f2f;
+          }
+          .risk-medium {
+            background: #fff3e0;
+            color: #f57c00;
+          }
+          .risk-low {
+            background: #e8f5e8;
+            color: #2e7d32;
+          }
+          .symptoms-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+          }
+          .symptom-item {
+            background: #f0f9f0;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            text-align: center;
+          }
+          .symptom-yes {
+            background: #ffebee;
+            color: #d32f2f;
+          }
+          .symptom-no {
+            background: #e8f5e8;
+            color: #2e7d32;
+          }
+          .no-assessments {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            padding: 40px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="doctor-info">
+              <img src="${doctor.photo}" alt="${doctor.name}">
+              <div class="doctor-details">
+                <h1>${doctor.name}</h1>
+                <p><strong>Specialty:</strong> ${doctor.specialty}</p>
+                <p><strong>Location:</strong> ${doctor.location}</p>
+              </div>
+            </div>
+            <form action="/logout" method="POST" style="display: inline;">
+              <button type="submit" class="logout-btn">Logout</button>
+            </form>
+          </div>
+
+          <div class="stats">
+            <div class="stat-card">
+              <h3>${assessments.length}</h3>
+              <p>Total Assessments</p>
+            </div>
+            <div class="stat-card">
+              <h3>${assessments.filter(a => a.status === 'pending').length}</h3>
+              <p>Pending Reviews</p>
+            </div>
+            <div class="stat-card">
+              <h3>${assessments.filter(a => a.riskLevel === 'High').length}</h3>
+              <p>High Risk Cases</p>
+            </div>
+          </div>
+
+          <h2>Patient Assessments</h2>
+    `;
+
+    if (assessments.length === 0) {
+      html += '<div class="no-assessments">No assessments received yet.</div>';
+    } else {
+      assessments.forEach((assessment, index) => {
+        const date = new Date(assessment.timestamp).toLocaleString();
+        const riskClass = assessment.riskLevel ? 
+          `risk-${assessment.riskLevel.toLowerCase()}` : 'risk-medium';
+        
+        html += `
+          <div class="assessment-card">
+            <div class="assessment-header">
+              <div class="assessment-meta">
+                <strong>From:</strong> ${assessment.from} | 
+                <strong>Received:</strong> ${date}
+              </div>
+              <div class="risk-badge ${riskClass}">
+                ${assessment.riskLevel || 'Medium'} Risk
+              </div>
+            </div>
+            
+            <div><strong>Prediction:</strong> ${assessment.prediction || 'N/A'}</div>
+            
+            ${assessment.symptoms ? `
+              <div style="margin-top: 15px;">
+                <strong>Symptoms:</strong>
+                <div class="symptoms-grid">
+                  ${Object.entries(assessment.symptoms).map(([symptom, value]) => 
+                    `<div class="symptom-item symptom-${value}">${symptom}: ${value}</div>`
+                  ).join('')}
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      });
+    }
+
+    html += `
+        </div>
+      </body>
+      </html>
+    `;
+
+    res.send(html);
+  }
+  
+  catch (error) {
+    console.error('Error loading doctor dashboard:', error);
+    res.status(500).send('Error loading doctor dashboard');
+  }
+});
+
+// Logout route
+app.post('/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Error destroying session:', err);
+    }
+    res.redirect('/login');
+  });
+});
+
+// Health check endpoint - NOW INCLUDES ModelManager status
+app.get('/health', (req, res) => {
+  const modelStatus = modelManager.getModelStatus();
+  
+  const health = {
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    databaseConnected: mongoose.connection.readyState === 1,
+    uploadsDirectory: fsSync.existsSync(path.join(__dirname, 'uploads')),
+    modelsDirectory: fsSync.existsSync(path.join(__dirname, 'models')),
+    memoryUsage: process.memoryUsage(),
+    uptime: process.uptime(),
+    modelManager: modelStatus
+  };
+
+  res.json(health);
+});
+
+// Model status endpoint
+app.get('/api/model-status', (req, res) => {
+  const status = modelManager.getModelStatus();
+  res.json(status);
+});
+
+// Initialize ModelManager and start server
+async function startServer() {
+  try {
+    console.log('🚀 Initializing Medical Screening System...');
+    
+    // Initialize ModelManager
+    const modelStatus = await modelManager.initialize();
+    console.log('📊 ModelManager Status:', modelStatus);
+    
+    // Start server
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`📱 Medical Screening System is ready!`);
+      console.log(`🌐 Access the application at: http://localhost:${PORT}`);
+      console.log(`🤖 Model Status: ${modelStatus.isLoaded ? 'Loaded' : 'Using Default Predictions'}`);
+    });
+    
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+// Add the missing admin dashboard HTML generation function
 function generateAdminDashboardHTML(stats, results, assessments, adminUsername) {
   const totalUsers = stats.totalUsers[0]?.count || 0;
   const totalTests = stats.totalTests[0]?.count || 0;
@@ -651,11 +1388,6 @@ function generateAdminDashboardHTML(stats, results, assessments, adminUsername) 
             color: #2e7d32;
         }
         
-        .status-pending {
-            background: #fff3e0;
-            color: #ef6c00;
-        }
-        
         .tabs {
             display: flex;
             background: rgba(255, 255, 255, 0.1);
@@ -688,28 +1420,6 @@ function generateAdminDashboardHTML(stats, results, assessments, adminUsername) 
             display: block;
         }
         
-        .quick-actions {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
-        }
-        
-        .action-card {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 15px;
-            padding: 20px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            color: white;
-        }
-        
-        .action-card:hover {
-            background: rgba(255, 255, 255, 0.2);
-            transform: translateY(-2px);
-        }
-        
         .search-box {
             width: 100%;
             padding: 15px;
@@ -718,11 +1428,6 @@ function generateAdminDashboardHTML(stats, results, assessments, adminUsername) 
             font-size: 1em;
             margin-bottom: 20px;
             background: rgba(255, 255, 255, 0.9);
-        }
-        
-        .search-box:focus {
-            outline: none;
-            box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
         }
         
         @media (max-width: 768px) {
@@ -793,24 +1498,12 @@ function generateAdminDashboardHTML(stats, results, assessments, adminUsername) 
             </div>
         </div>
 
-        <!-- Charts Section -->
-        <div class="dashboard-grid">
-            <div class="chart-container">
-                <h3 class="chart-title">📈 Weekly Testing Activity</h3>
-                <canvas id="weeklyChart" width="400" height="200"></canvas>
-            </div>
-            <div class="chart-container">
-                <h3 class="chart-title">🎯 Prediction Distribution</h3>
-                <canvas id="predictionChart" width="300" height="200"></canvas>
-            </div>
-        </div>
-
         <!-- Data Tables Section -->
         <div class="data-section">
             <div class="tabs">
                 <div class="tab active" onclick="showTab('patients')">👥 Patient Data</div>
                 <div class="tab" onclick="showTab('doctors')">👨‍⚕️ Doctor Activity</div>
-                <div class="tab" onclick="showTab('system')">⚙️ System Logs</div>
+                <div class="tab" onclick="showTab('system')">⚙️ System Status</div>
             </div>
 
             <div id="patients" class="tab-content active">
@@ -835,7 +1528,7 @@ function generateAdminDashboardHTML(stats, results, assessments, adminUsername) 
                                 <td>${result.symptoms ? Object.keys(result.symptoms).length + ' symptoms' : 'None'}</td>
                                 <td>${new Date(result.timestamp).toLocaleDateString()}</td>
                                 <td>
-                                    <button class="btn btn-primary" style="font-size: 0.8em; padding: 5px 10px;" onclick="viewPatientDetails('${result.username}', ${result.id})">View</button>
+                                    <button class="btn btn-primary" style="font-size: 0.8em; padding: 5px 10px;" onclick="viewPatientDetails('${result.username}', '${result._id}')">View</button>
                                 </td>
                             </tr>
                         `).join('')}
@@ -864,7 +1557,7 @@ function generateAdminDashboardHTML(stats, results, assessments, adminUsername) 
                                 <td><span class="status-badge ${assessment.riskLevel === 'High' ? 'status-anemic' : assessment.riskLevel === 'Medium' ? 'status-pending' : 'status-normal'}">${assessment.riskLevel || 'Medium'}</span></td>
                                 <td>${assessment.prediction || 'N/A'}</td>
                                 <td>${new Date(assessment.timestamp).toLocaleDateString()}</td>
-                                <td><span class="status-badge status-pending">${assessment.status || 'Pending'}</span></td>
+                                <td><span class="status-badge status-pending">${assessment.status || 'pending'}</span></td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -872,151 +1565,37 @@ function generateAdminDashboardHTML(stats, results, assessments, adminUsername) 
             </div>
 
             <div id="system" class="tab-content">
-                <div class="quick-actions">
-                    <div class="action-card" onclick="clearSystemLogs()">
-                        <h4>🗑️ Clear Logs</h4>
-                        <p>Remove old system logs</p>
-                    </div>
-                    <div class="action-card" onclick="backupDatabase()">
-                        <h4>💾 Backup Data</h4>
-                        <p>Create database backup</p>
-                    </div>
-                    <div class="action-card" onclick="generateReport()">
-                        <h4>📋 Generate Report</h4>
-                        <p>Create system report</p>
-                    </div>
-                    <div class="action-card" onclick="viewSystemHealth()">
-                        <h4>🏥 System Health</h4>
-                        <p>Check system status</p>
-                    </div>
+                <div class="model-status">
+                    <h4>🤖 Model Status</h4>
+                    <div id="modelStatusInfo">Loading...</div>
                 </div>
                 <div style="margin-top: 30px;">
-                    <h4>📊 Monthly Statistics</h4>
-                    <canvas id="monthlyChart" width="400" height="200"></canvas>
+                    <h4>📊 System Health</h4>
+                    <button class="btn btn-primary" onclick="checkSystemHealth()">Check Health</button>
+                    <button class="btn btn-primary" onclick="checkModelStatus()">Model Status</button>
                 </div>
             </div>
-        </div>
-
-        <!-- User Activity Chart -->
-        <div class="chart-container">
-            <h3 class="chart-title">👤 Top Active Users</h3>
-            <canvas id="userActivityChart" width="400" height="200"></canvas>
         </div>
     </div>
 
     <script>
-        // Chart.js configurations
-        const chartOptions = {
-            responsive: true,
-            plugins: {
-                legend: {
-                    position: 'top',
-                }
-            }
-        };
-
-        // Weekly Activity Chart
-        const weeklyData = ${JSON.stringify(stats.weeklyTests)};
-        const weeklyLabels = weeklyData.map(d => new Date(d.date).toLocaleDateString());
-        const weeklyCounts = weeklyData.map(d => d.count);
-
-        new Chart(document.getElementById('weeklyChart'), {
-            type: 'line',
-            data: {
-                labels: weeklyLabels,
-                datasets: [{
-                    label: 'Tests Performed',
-                    data: weeklyCounts,
-                    borderColor: '#667eea',
-                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                    tension: 0.4,
-                    fill: true
-                }]
-            },
-            options: chartOptions
-        });
-
-        // Prediction Distribution Chart
-        const predictionData = ${JSON.stringify(stats.predictionTrends)};
-        const predictionLabels = predictionData.map(d => d.prediction);
-        const predictionCounts = predictionData.map(d => d.count);
-
-        new Chart(document.getElementById('predictionChart'), {
-            type: 'doughnut',
-            data: {
-                labels: predictionLabels,
-                datasets: [{
-                    data: predictionCounts,
-                    backgroundColor: ['#e74c3c', '#2ecc71'],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                ...chartOptions,
-                cutout: '60%'
-            }
-        });
-
-        // Monthly Statistics Chart
-        const monthlyData = ${JSON.stringify(stats.monthlyStats)};
-        const monthlyLabels = monthlyData.map(d => d.month);
-        const monthlyCounts = monthlyData.map(d => d.count);
-
-        new Chart(document.getElementById('monthlyChart'), {
-            type: 'bar',
-            data: {
-                labels: monthlyLabels,
-                datasets: [{
-                    label: 'Monthly Tests',
-                    data: monthlyCounts,
-                    backgroundColor: 'rgba(102, 126, 234, 0.8)',
-                    borderColor: '#667eea',
-                    borderWidth: 1
-                }]
-            },
-            options: chartOptions
-        });
-
-        // User Activity Chart
-        const userActivityData = ${JSON.stringify(stats.userActivity)};
-        const userLabels = userActivityData.map(d => d.username);
-        const userCounts = userActivityData.map(d => d.tests);
-
-        new Chart(document.getElementById('userActivityChart'), {
-            type: 'horizontalBar',
-            data: {
-                labels: userLabels,
-                datasets: [{
-                    label: 'Number of Tests',
-                    data: userCounts,
-                    backgroundColor: 'rgba(46, 204, 113, 0.8)',
-                    borderColor: '#2ecc71',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                ...chartOptions,
-                indexAxis: 'y'
-            }
-        });
-
         // Tab functionality
         function showTab(tabName) {
-            // Hide all tab contents
             document.querySelectorAll('.tab-content').forEach(content => {
                 content.classList.remove('active');
             });
             
-            // Remove active class from all tabs
             document.querySelectorAll('.tab').forEach(tab => {
                 tab.classList.remove('active');
             });
             
-            // Show selected tab content
             document.getElementById(tabName).classList.add('active');
-            
-            // Add active class to clicked tab
             event.target.classList.add('active');
+            
+            // Load model status when system tab is shown
+            if (tabName === 'system') {
+                checkModelStatus();
+            }
         }
 
         // Table filtering
@@ -1061,51 +1640,46 @@ function generateAdminDashboardHTML(stats, results, assessments, adminUsername) 
                 });
         }
 
-        function clearSystemLogs() {
-            if (confirm('Are you sure you want to clear system logs?')) {
-                fetch('/api/admin/clear-logs', { method: 'POST' })
-                    .then(response => response.json())
-                    .then(data => {
-                        alert(data.message);
-                        refreshDashboard();
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        alert('Error clearing logs');
-                    });
-            }
-        }
-
-        function backupDatabase() {
-            fetch('/api/admin/backup', { method: 'POST' })
-                .then(response => response.blob())
-                .then(blob => {
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = \`database_backup_\${new Date().toISOString().split('T')[0]}.db\`;
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Error creating backup');
-                });
-        }
-
-        function generateReport() {
-            window.open('/api/admin/report', '_blank');
-        }
-
-        function viewSystemHealth() {
+        function checkSystemHealth() {
             fetch('/health')
                 .then(response => response.json())
                 .then(data => {
-                    alert(\`System Status: \${data.status}\\nModel Loaded: \${data.modelLoaded}\\nDatabase Connected: \${data.databaseConnected}\\nTimestamp: \${data.timestamp}\`);
+                    const healthInfo = \`
+System Status: \${data.status}
+Database: \${data.databaseConnected ? 'Connected' : 'Disconnected'}
+Model Loaded: \${data.modelManager.isLoaded ? 'Yes' : 'No'}
+Uptime: \${Math.floor(data.uptime / 60)} minutes
+Memory Usage: \${Math.round(data.memoryUsage.used / 1024 / 1024)} MB
+                    \`;
+                    alert(healthInfo);
                 })
                 .catch(error => {
                     console.error('Error:', error);
                     alert('Error checking system health');
+                });
+        }
+
+        function checkModelStatus() {
+            fetch('/api/model-status')
+                .then(response => response.json())
+                .then(data => {
+                    const statusDiv = document.getElementById('modelStatusInfo');
+                    const statusColor = data.isLoaded ? '#2ecc71' : '#e74c3c';
+                    const statusText = data.isLoaded ? 'Loaded' : 'Not Loaded';
+                    
+                    statusDiv.innerHTML = \`
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 10px;">
+                            <p><strong>Status:</strong> <span style="color: \${statusColor};">\${statusText}</span></p>
+                            <p><strong>Load Attempts:</strong> \${data.loadAttempts}/\${data.maxAttempts}</p>
+                            <p><strong>Model File Exists:</strong> \${data.modelExists ? 'Yes' : 'No'}</p>
+                            <p><strong>Is Loading:</strong> \${data.isLoading ? 'Yes' : 'No'}</p>
+                            <p><strong>Model Path:</strong> \${data.modelPath}</p>
+                        </div>
+                    \`;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('modelStatusInfo').innerHTML = '<p style="color: #e74c3c;">Error loading model status</p>';
                 });
         }
 
@@ -1117,824 +1691,5 @@ function generateAdminDashboardHTML(stats, results, assessments, adminUsername) 
   `;
 }
 
-// Admin API Routes
-app.get('/api/admin/patient-details/:username', requireAdmin, async (req, res) => {
-  try {
-    const { username } = req.params;
-    const results = await getPatientResults(username);
-    
-    const stats = {
-      totalTests: results.length,
-      anemicCount: results.filter(r => r.prediction === 'Anemic').length,
-      normalCount: results.filter(r => r.prediction === 'Non-anemic').length,
-      lastTest: results[0] ? new Date(results[0].timestamp).toLocaleDateString() : 'Never',
-      avgConfidence: results.length > 0 ? 
-        (results.reduce((sum, r) => sum + r.confidence, 0) / results.length * 100).toFixed(1) + '%' : 'N/A'
-    };
-
-    logAdminAction(req.session.username, 'VIEW_PATIENT_DETAILS', username, `Viewed details for patient ${username}`);
-    res.json(stats);
-  } catch (error) {
-    console.error('Error fetching patient details:', error);
-    res.status(500).json({ error: 'Failed to fetch patient details' });
-  }
-});
-
-app.post('/api/admin/clear-logs', requireAdmin, async (req, res) => {
-  try {
-    // Clear admin logs older than 30 days
-    const query = `DELETE FROM admin_logs WHERE timestamp < datetime('now', '-30 days')`;
-    
-    db.run(query, [], function(err) {
-      if (err) {
-        console.error('Error clearing logs:', err);
-        res.status(500).json({ error: 'Failed to clear logs' });
-      } else {
-        logAdminAction(req.session.username, 'CLEAR_LOGS', null, `Cleared ${this.changes} old log entries`);
-        res.json({ message: `Cleared ${this.changes} log entries`, cleared: this.changes });
-      }
-    });
-  } catch (error) {
-    console.error('Error clearing logs:', error);
-    res.status(500).json({ error: 'Failed to clear logs' });
-  }
-});
-
-app.post('/api/admin/backup', requireAdmin, async (req, res) => {
-  try {
-    const backupPath = `/tmp/database_backup_${new Date().toISOString().split('T')[0]}.db`;
-    
-    // Copy database file
-    const dbContent = await fs.readFile('./medical_app.db');
-    await fs.writeFile(backupPath, dbContent);
-    
-    logAdminAction(req.session.username, 'DATABASE_BACKUP', null, 'Created database backup');
-    
-    res.download(backupPath, `database_backup_${new Date().toISOString().split('T')[0]}.db`, (err) => {
-      if (err) {
-        console.error('Error downloading backup:', err);
-      }
-      // Clean up temp file
-      fs.unlink(backupPath).catch(console.error);
-    });
-  } catch (error) {
-    console.error('Error creating backup:', error);
-    res.status(500).json({ error: 'Failed to create backup' });
-  }
-});
-
-app.get('/api/admin/export-all', requireAdmin, async (req, res) => {
-  try {
-    const results = await getAllPatientResults();
-    const allAssessments = Object.entries(doctorAssessments).flatMap(([doctorId, assessments]) => 
-      assessments.map(assessment => ({
-        ...assessment,
-        doctorId,
-        doctorName: doctorProfiles[doctorId]?.name || 'Unknown Doctor'
-      }))
-    );
-
-    let csvContent = 'Type,Username,Prediction,Confidence,Symptoms,Doctor,Risk Level,Date\n';
-    
-    // Add patient results
-    results.forEach(result => {
-      const symptomsStr = result.symptoms ? 
-        Object.entries(result.symptoms).map(([k, v]) => `${k}:${v}`).join(';') : 
-        'None';
-      csvContent += `"Patient Result","${result.username}","${result.prediction}","${(result.confidence * 100).toFixed(2)}%","${symptomsStr}","","","${new Date(result.timestamp).toLocaleDateString()}"\n`;
-    });
-
-    // Add doctor assessments
-    allAssessments.forEach(assessment => {
-      const symptomsStr = assessment.symptoms ? 
-        Object.entries(assessment.symptoms).map(([k, v]) => `${k}:${v}`).join(';') : 
-        'None';
-      csvContent += `"Doctor Assessment","${assessment.from}","${assessment.prediction || 'N/A'}","","${symptomsStr}","${assessment.doctorName}","${assessment.riskLevel || 'Medium'}","${new Date(assessment.timestamp).toLocaleDateString()}"\n`;
-    });
-
-    logAdminAction(req.session.username, 'EXPORT_ALL_DATA', null, 'Exported complete system data');
-
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="complete_system_data_${new Date().toISOString().split('T')[0]}.csv"`);
-    res.send(csvContent);
-  } catch (error) {
-    console.error('Error exporting all data:', error);
-    res.status(500).json({ error: 'Failed to export data' });
-  }
-});
-
-app.get('/api/admin/report', requireAdmin, async (req, res) => {
-  try {
-    const stats = await getSystemStats();
-    const results = await getAllPatientResults();
-    
-    const totalUsers = stats.totalUsers[0]?.count || 0;
-    const totalTests = stats.totalTests[0]?.count || 0;
-    const anemicCases = stats.anemicCases[0]?.count || 0;
-    const todayTests = stats.todayTests[0]?.count || 0;
-    
-    const reportHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-    <title>System Report - Medical Screening System</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        .header { text-align: center; margin-bottom: 40px; }
-        .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 40px; }
-        .stat-box { border: 1px solid #ddd; padding: 20px; text-align: center; }
-        .stat-box h3 { color: #333; margin: 0; font-size: 2em; }
-        .stat-box p { color: #666; margin: 10px 0 0 0; }
-        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-        th { background-color: #f5f5f5; }
-        .anemic { color: #d32f2f; font-weight: bold; }
-        .normal { color: #2e7d32; font-weight: bold; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>Medical Screening System Report</h1>
-        <p>Generated on: ${new Date().toLocaleDateString()}</p>
-    </div>
-    
-    <div class="stats">
-        <div class="stat-box">
-            <h3>${totalUsers}</h3>
-            <p>Total Users</p>
-        </div>
-        <div class="stat-box">
-            <h3>${totalTests}</h3>
-            <p>Total Tests</p>
-        </div>
-        <div class="stat-box">
-            <h3>${anemicCases}</h3>
-            <p>Anemic Cases</p>
-        </div>
-        <div class="stat-box">
-            <h3>${todayTests}</h3>
-            <p>Today's Tests</p>
-        </div>
-    </div>
-    
-    <h2>Recent Test Results</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>Patient</th>
-                <th>Prediction</th>
-                <th>Confidence</th>
-                <th>Date</th>
-            </tr>
-        </thead>
-        <tbody>
-            ${results.slice(0, 20).map(result => `
-                <tr>
-                    <td>${result.username}</td>
-                    <td class="${result.prediction === 'Anemic' ? 'anemic' : 'normal'}">${result.prediction}</td>
-                    <td>${(result.confidence * 100).toFixed(1)}%</td>
-                    <td>${new Date(result.timestamp).toLocaleDateString()}</td>
-                </tr>
-            `).join('')}
-        </tbody>
-    </table>
-    
-    <p><em>This report was generated automatically by the Medical Screening System.</em></p>
-</body>
-</html>
-    `;
-
-    logAdminAction(req.session.username, 'GENERATE_REPORT', null, 'Generated system report');
-    res.send(reportHtml);
-  } catch (error) {
-    console.error('Error generating report:', error);
-    res.status(500).send('Error generating report');
-  }
-});
-
-// User routes (protected)
-app.get('/symptoms', requireAuth, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'symptom-checker.html'));
-});
-
-app.get('/send-assessment', requireAuth, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'send-assessment.html'));
-});
-
-// New route for patient history page
-app.get('/history', requireAuth, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'patient-history.html'));
-});
-
-// Prediction endpoint (for users)
-app.post('/predict', requireAuth, upload.single('eyelid'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
-
-  try {
-    let prediction = 'Anemic';
-    let confidence = 0.8;
-
-    if (sessionONNX) {
-      const inputTensor = await preprocessImage(req.file.path);
-      const feeds = { [sessionONNX.inputNames[0]]: inputTensor };
-      const results = await sessionONNX.run(feeds);
-      confidence = results[sessionONNX.outputNames[0]].data[0];
-      prediction = confidence > 0.5 ? 'Non-anemic' : 'Anemic';
-    }
-
-    // Save result to SQLite database
-    const resultData = { prediction, confidence };
-    await savePatientResult(req.session.username, resultData);
-
-    req.session.lastPrediction = resultData;
-    res.json({ 
-      prediction, 
-      confidence, 
-      redirectTo: prediction === 'Anemic' ? '/symptoms' : null 
-    });
-  } catch (err) {
-    console.error('Prediction error:', err);
-    res.status(500).json({ error: 'Prediction failed.' });
-  }
-});
-
-// Send assessment to doctor (updated to include symptoms)
-app.post('/api/sendToDoctor', requireAuth, async (req, res) => {
-  const { doctorId, assessmentData } = req.body;
-  
-  if (!doctorId || !assessmentData) {
-    return res.status(400).json({ error: 'Missing required data.' });
-  }
-
-  // Validate doctor exists
-  if (!doctorProfiles[doctorId]) {
-    return res.status(400).json({ error: 'Invalid doctor selected.' });
-  }
-
-  // Initialize doctor's assessment array if it doesn't exist
-  if (!doctorAssessments[doctorId]) {
-    doctorAssessments[doctorId] = [];
-  }
-
-  // Add assessment to doctor's queue
-  const assessment = {
-    id: Date.now().toString(),
-    from: req.session.username,
-    timestamp: new Date().toISOString(),
-    status: 'pending',
-    ...assessmentData
-  };
-
-  doctorAssessments[doctorId].push(assessment);
-
-  // Also save this to patient's history with symptoms in SQLite
-  try {
-    const resultWithSymptoms = {
-      prediction: assessmentData.prediction,
-      confidence: assessmentData.confidence || 0.8,
-      symptoms: assessmentData.symptoms
-    };
-    await savePatientResult(req.session.username, resultWithSymptoms);
-  } catch (error) {
-    console.error('Error saving assessment to patient history:', error);
-  }
-
-  console.log(`Assessment sent to doctor ${doctorId} from user ${req.session.username}`);
-  res.json({ 
-    success: true, 
-    message: `Assessment sent to ${doctorProfiles[doctorId].name} successfully.` 
-  });
-});
-
-// API endpoint to get patient history from SQLite
-app.get('/api/patient-history', requireAuth, async (req, res) => {
-  try {
-    const results = await getPatientResults(req.session.username);
-    res.json(results);
-  } catch (error) {
-    console.error('Error fetching patient history:', error);
-    res.status(500).json({ error: 'Failed to fetch patient history' });
-  }
-});
-
-// Get patient statistics summary from SQLite
-app.get('/api/patient-stats', requireAuth, async (req, res) => {
-  try {
-    const results = await getPatientResults(req.session.username);
-    
-    if (results.length === 0) {
-      return res.json({
-        totalTests: 0,
-        anemicResults: 0,
-        normalResults: 0,
-        avgConfidence: 0,
-        thisWeekTests: 0,
-        lastTest: null,
-        trend: 'stable'
-      });
-    }
-
-    // Calculate statistics
-    const totalTests = results.length;
-    const anemicResults = results.filter(r => r.prediction === 'Anemic').length;
-    const normalResults = results.filter(r => r.prediction === 'Non-anemic').length;
-    const avgConfidence = results.reduce((sum, r) => sum + r.confidence, 0) / totalTests;
-
-    // This week's tests
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    const thisWeekTests = results.filter(r => 
-      new Date(r.timestamp) > weekAgo
-    ).length;
-
-    // Last test
-    const lastTest = results[0];
-
-    // Calculate trend (compare last 3 vs previous 3)
-    let trend = 'stable';
-    if (results.length >= 6) {
-      const recent3 = results.slice(0, 3);
-      const previous3 = results.slice(3, 6);
-      const recentAvg = recent3.reduce((sum, r) => sum + r.confidence, 0) / 3;
-      const previousAvg = previous3.reduce((sum, r) => sum + r.confidence, 0) / 3;
-      
-      if (recentAvg > previousAvg + 0.1) trend = 'improving';
-      else if (recentAvg < previousAvg - 0.1) trend = 'declining';
-    }
-
-    res.json({
-      totalTests,
-      anemicResults,
-      normalResults,
-      avgConfidence: Math.round(avgConfidence * 100),
-      thisWeekTests,
-      lastTest,
-      trend
-    });
-  } catch (error) {
-    console.error('Error fetching patient stats:', error);
-    res.status(500).json({ error: 'Failed to fetch statistics' });
-  }
-});
-
-// Export patient data (CSV format) from SQLite
-app.get('/api/export-data', requireAuth, async (req, res) => {
-  try {
-    const results = await getPatientResults(req.session.username);
-    
-    if (results.length === 0) {
-      return res.status(404).json({ error: 'No data to export' });
-    }
-
-    // Create CSV content
-    let csvContent = 'Date,Time,Prediction,Confidence,Symptoms\n';
-    
-    results.forEach(result => {
-      const date = new Date(result.timestamp);
-      const dateStr = date.toLocaleDateString();
-      const timeStr = date.toLocaleTimeString();
-      const symptomsStr = result.symptoms ? 
-        Object.entries(result.symptoms).map(([k, v]) => `${k}:${v}`).join(';') : 
-        'None';
-      
-      csvContent += `"${dateStr}","${timeStr}","${result.prediction}","${(result.confidence * 100).toFixed(2)}%","${symptomsStr}"\n`;
-    });
-
-    // Set headers for file download
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="medical_history_${req.session.username}_${new Date().toISOString().split('T')[0]}.csv"`);
-    
-    res.send(csvContent);
-  } catch (error) {
-    console.error('Error exporting data:', error);
-    res.status(500).json({ error: 'Failed to export data' });
-  }
-});
-
-// Delete a specific result from SQLite
-app.delete('/api/patient-history/:resultId', requireAuth, async (req, res) => {
-  try {
-    const { resultId } = req.params;
-    await deletePatientResult(req.session.username, resultId);
-    res.json({ success: true, message: 'Result deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting result:', error);
-    if (error.message === 'Result not found or unauthorized') {
-      res.status(404).json({ error: 'Result not found' });
-    } else {
-      res.status(500).json({ error: 'Failed to delete result' });
-    }
-  }
-});
-
-// Get health insights based on patient data from SQLite
-app.get('/api/health-insights', requireAuth, async (req, res) => {
-  try {
-    const results = await getPatientResults(req.session.username);
-    
-    if (results.length < 3) {
-      return res.json({
-        insights: ['Take more tests for better health insights'],
-        recommendations: ['Regular screening helps track your health trends']
-      });
-    }
-
-    const insights = [];
-    const recommendations = [];
-
-    // Analyze trends
-    const recentResults = results.slice(0, 5);
-    const anemicCount = recentResults.filter(r => r.prediction === 'Anemic').length;
-    const avgConfidence = recentResults.reduce((sum, r) => sum + r.confidence, 0) / recentResults.length;
-
-    if (anemicCount >= 3) {
-      insights.push('⚠️ Multiple recent anemic results detected');
-      recommendations.push('Consider consulting with a healthcare professional');
-    } else if (anemicCount === 0) {
-      insights.push('✅ Recent results show no signs of anemia');
-      recommendations.push('Keep maintaining your healthy lifestyle');
-    }
-
-    if (avgConfidence > 0.8) {
-      insights.push('📊 High confidence in recent predictions');
-    } else if (avgConfidence < 0.6) {
-      insights.push('📊 Consider retaking tests for more reliable results');
-      recommendations.push('Ensure good lighting and clear eyelid photos');
-    }
-
-    // Testing frequency analysis
-    const daysSinceLastTest = Math.floor((new Date() - new Date(results[0].timestamp)) / (1000 * 60 * 60 * 24));
-    if (daysSinceLastTest > 30) {
-      recommendations.push('Consider taking a new screening test');
-    }
-
-    res.json({ insights, recommendations });
-  } catch (error) {
-    console.error('Error generating insights:', error);
-    res.status(500).json({ error: 'Failed to generate insights' });
-  }
-});
-
-// Doctor dashboard (protected for doctors only)
-app.get('/doctor/:id', requireAuth, (req, res) => {
-  const { id } = req.params;
-  
-  // Check if user is a doctor
-  if (req.session.role !== 'doctor') {
-    return res.status(403).send(`
-      <h3>Access Denied</h3>
-      <p>Only doctors can access this page.</p>
-      <a href="/dashboard">Go to Dashboard</a>
-    `);
-  }
-
-  // Check if doctor is accessing their own dashboard
-  if (req.session.doctorId !== id) {
-    return res.status(403).send(`
-      <h3>Access Denied</h3>
-      <p>You can only access your own dashboard.</p>
-      <a href="/doctor/${req.session.doctorId}">Go to Your Dashboard</a>
-    `);
-  }
-
-  // Get doctor profile
-  const doctor = doctorProfiles[id];
-  if (!doctor) {
-    return res.status(404).send('<h3>Doctor not found</h3>');
-  }
-
-  // Get assessments for this doctor
-  const assessments = doctorAssessments[id] || [];
-  
-  // Generate HTML for doctor dashboard
-  let html = `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <title>Doctor Dashboard - ${doctor.name}</title>
-      <style>
-        body {
-          font-family: 'Segoe UI', sans-serif;
-          background: linear-gradient(135deg, #e8f5e8, #f0f9f0);
-          margin: 0;
-          padding: 20px;
-        }
-        .container {
-          max-width: 1200px;
-          margin: 0 auto;
-          background: white;
-          border-radius: 16px;
-          box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
-          padding: 30px;
-        }
-        .header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 30px;
-          padding-bottom: 20px;
-          border-bottom: 2px solid #e0e0e0;
-        }
-        .doctor-info {
-          display: flex;
-          align-items: center;
-          gap: 20px;
-        }
-        .doctor-info img {
-          width: 80px;
-          height: 80px;
-          border-radius: 50%;
-          border: 3px solid #4caf50;
-        }
-        .doctor-details h1 {
-          color: #2e7d32;
-          margin: 0;
-          font-size: 1.8em;
-        }
-        .doctor-details p {
-          color: #666;
-          margin: 5px 0;
-        }
-        .logout-btn {
-          background: #d32f2f;
-          color: white;
-          padding: 10px 20px;
-          border: none;
-          border-radius: 8px;
-          cursor: pointer;
-          text-decoration: none;
-          font-weight: bold;
-        }
-        .logout-btn:hover {
-          background: #b71c1c;
-        }
-        .stats {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 20px;
-          margin-bottom: 30px;
-        }
-        .stat-card {
-          background: #f0f9f0;
-          padding: 20px;
-          border-radius: 12px;
-          text-align: center;
-          border: 2px solid #e8f5e8;
-        }
-        .stat-card h3 {
-          color: #2e7d32;
-          margin: 0 0 10px 0;
-          font-size: 2em;
-        }
-        .stat-card p {
-          color: #666;
-          margin: 0;
-        }
-        .assessment-card {
-          background: #f9f9f9;
-          border: 1px solid #e0e0e0;
-          border-radius: 12px;
-          padding: 20px;
-          margin-bottom: 20px;
-          transition: transform 0.2s ease;
-        }
-        .assessment-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
-        .assessment-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 15px;
-        }
-        .assessment-meta {
-          color: #666;
-          font-size: 0.9em;
-        }
-        .risk-badge {
-          padding: 5px 15px;
-          border-radius: 20px;
-          font-weight: bold;
-          font-size: 0.8em;
-        }
-        .risk-high {
-          background: #ffebee;
-          color: #d32f2f;
-        }
-        .risk-medium {
-          background: #fff3e0;
-          color: #f57c00;
-        }
-        .risk-low {
-          background: #e8f5e8;
-          color: #2e7d32;
-        }
-        .symptoms-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-          gap: 10px;
-          margin-top: 10px;
-        }
-        .symptom-item {
-          background: #f0f9f0;
-          padding: 8px 12px;
-          border-radius: 6px;
-          font-size: 0.9em;
-          text-align: center;
-        }
-        .symptom-yes {
-          background: #ffebee;
-          color: #d32f2f;
-        }
-        .symptom-no {
-          background: #e8f5e8;
-          color: #2e7d32;
-        }
-        .no-assessments {
-          text-align: center;
-          color: #666;
-          font-style: italic;
-          padding: 40px;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <div class="doctor-info">
-            <img src="${doctor.photo}" alt="${doctor.name}">
-            <div class="doctor-details">
-              <h1>${doctor.name}</h1>
-              <p><strong>Specialty:</strong> ${doctor.specialty}</p>
-              <p><strong>Location:</strong> ${doctor.location}</p>
-            </div>
-          </div>
-          <form action="/logout" method="POST" style="display: inline;">
-            <button type="submit" class="logout-btn">Logout</button>
-          </form>
-        </div>
-
-        <div class="stats">
-          <div class="stat-card">
-            <h3>${assessments.length}</h3>
-            <p>Total Assessments</p>
-          </div>
-          <div class="stat-card">
-            <h3>${assessments.filter(a => a.status === 'pending').length}</h3>
-            <p>Pending Reviews</p>
-          </div>
-          <div class="stat-card">
-            <h3>${assessments.filter(a => a.riskLevel === 'High').length}</h3>
-            <p>High Risk Cases</p>
-          </div>
-        </div>
-
-        <h2>Patient Assessments</h2>
-  `;
-
-  if (assessments.length === 0) {
-    html += '<div class="no-assessments">No assessments received yet.</div>';
-  } else {
-    assessments.reverse().forEach((assessment, index) => {
-      const date = new Date(assessment.timestamp).toLocaleString();
-      const riskClass = assessment.riskLevel ? 
-        `risk-${assessment.riskLevel.toLowerCase()}` : 'risk-medium';
-      
-      html += `
-        <div class="assessment-card">
-          <div class="assessment-header">
-            <div class="assessment-meta">
-              <strong>From:</strong> ${assessment.from} | 
-              <strong>Received:</strong> ${date}
-            </div>
-            <div class="risk-badge ${riskClass}">
-              ${assessment.riskLevel || 'Medium'} Risk
-            </div>
-          </div>
-          
-          <div><strong>Prediction:</strong> ${assessment.prediction || 'N/A'}</div>
-          
-          ${assessment.symptoms ? `
-            <div style="margin-top: 15px;">
-              <strong>Symptoms:</strong>
-              <div class="symptoms-grid">
-                ${Object.entries(assessment.symptoms).map(([symptom, value]) => 
-                  `<div class="symptom-item symptom-${value}">${symptom}: ${value}</div>`
-                ).join('')}
-              </div>
-            </div>
-          ` : ''}
-        </div>
-      `;
-    });
-  }
-
-  html += `
-      </div>
-    </body>
-    </html>
-  `;
-
-  res.send(html);
-});
-
-// API endpoint to get doctor list (for send-assessment page)
-app.get('/api/doctors', requireAuth, (req, res) => {
-  const doctorList = Object.entries(doctorProfiles).map(([id, doctor]) => ({
-    id,
-    name: doctor.name,
-    specialty: doctor.specialty,
-    location: doctor.location,
-    photo: doctor.photo
-  }));
-  
-  res.json(doctorList);
-});
-
-// Logout
-app.post('/logout', (req, res) => {
-  // Log admin logout
-  if (req.session.role === 'admin') {
-    logAdminAction(req.session.username, 'LOGOUT', null, 'Admin logged out of system');
-  }
-  
-  req.session.destroy((err) => {
-    if (err) {
-      console.error('Logout error:', err);
-    }
-    res.redirect('/');
-  });
-});
-
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    modelLoaded: !!sessionONNX,
-    databaseConnected: !!db,
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Preprocess image function
-async function preprocessImage(imagePath) {
-  const buffer = await sharp(imagePath)
-    .resize(224, 224)
-    .removeAlpha()
-    .raw()
-    .toBuffer();
-
-  const mean = [0.485, 0.456, 0.406];
-  const std = [0.229, 0.224, 0.225];
-  const float32Data = new Float32Array(3 * 224 * 224);
-
-  for (let i = 0; i < 224 * 224; i++) {
-    for (let c = 0; c < 3; c++) {
-      const val = buffer[i * 3 + c] / 255;
-      float32Data[c * 224 * 224 + i] = (val - mean[c]) / std[c];
-    }
-  }
-
-  return new ortTensor('float32', float32Data, [1, 3, 224, 224]);
-}
-
-// 404 handler
-app.use((req, res) => {
-  res.status(404).send(`
-    <h1>404 - Page Not Found</h1>
-    <p>The page you're looking for doesn't exist.</p>
-    <a href="/">Go Home</a>
-  `);
-});
-
-// Error handler
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(500).send(`
-    <h1>500 - Internal Server Error</h1>
-    <p>Something went wrong on our end.</p>
-    <a href="/">Go Home</a>
-  `);
-});
-
-// Graceful database shutdown
-process.on('SIGINT', () => {
-  console.log('\n🛑 Shutting down gracefully...');
-  db.close((err) => {
-    if (err) {
-      console.error('❌ Error closing database:', err);
-    } else {
-      console.log('✅ Database connection closed');
-    }
-    process.exit(0);
-  });
-});
-
-app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
-  console.log(`📊 Available doctors: ${Object.keys(doctorProfiles).length}`);
-  console.log(`🗄️ SQLite database: medical_app.db`);
-  console.log(`👨‍💼 Admin dashboard: http://localhost:${PORT}/admin`);
-});
+// Start the server
+startServer();

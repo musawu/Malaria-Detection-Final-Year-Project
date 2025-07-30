@@ -2,150 +2,82 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Login - Anemia & Malaria Detection</title>
+  <title>Login</title>
+  <link rel="stylesheet" href="/css/styles.css">
   <style>
     body {
-      font-family: 'Segoe UI', sans-serif;
-      background: linear-gradient(135deg, #e8f5e8, #f0f9f0);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      margin: 0;
-      padding: 20px;
+      font-family: Arial, sans-serif;
+      background-color: #f2f2f2;
+      padding: 30px;
     }
 
     .login-container {
       background: white;
-      padding: 40px;
-      border-radius: 16px;
-      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
-      width: 100%;
       max-width: 400px;
+      margin: auto;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
     }
 
-    .login-container h2 {
+    h2 {
       text-align: center;
-      margin-bottom: 30px;
-      color: #2e7d32;
+      margin-bottom: 20px;
     }
 
-    .role-selector {
-      margin-bottom: 25px;
-    }
-
-    .role-selector label {
-      display: block;
-      margin-bottom: 10px;
-      color: #333;
-      font-weight: 500;
-    }
-
-    .role-options {
+    .role-selection {
       display: flex;
-      gap: 15px;
-      justify-content: center;
+      justify-content: space-around;
+      margin-bottom: 20px;
     }
 
     .role-option {
-      flex: 1;
-      padding: 12px;
-      border: 2px solid #e0e0e0;
+      padding: 10px 20px;
+      border: 1px solid #ccc;
       border-radius: 8px;
-      text-align: center;
       cursor: pointer;
-      transition: all 0.3s ease;
-      background: #f9f9f9;
-    }
-
-    .role-option:hover {
-      border-color: #4caf50;
-      background: #f0f9f0;
     }
 
     .role-option.selected {
-      border-color: #2e7d32;
-      background: #e8f5e8;
-      color: #2e7d32;
-      font-weight: 500;
+      background-color: #4CAF50;
+      color: white;
+      border-color: #4CAF50;
     }
 
-    .role-icon {
-      font-size: 1.5em;
-      margin-bottom: 5px;
+    form {
+      display: flex;
+      flex-direction: column;
     }
 
-    .login-container input {
-      width: 100%;
-      padding: 12px;
+    input[type="text"],
+    input[type="password"] {
+      padding: 10px;
       margin: 10px 0;
+      border-radius: 6px;
       border: 1px solid #ccc;
-      border-radius: 8px;
-      font-size: 1em;
-      box-sizing: border-box;
     }
 
-    .login-container button {
-      width: 100%;
+    button {
       padding: 12px;
-      background: #4caf50;
+      background-color: #4CAF50;
       color: white;
       border: none;
-      border-radius: 8px;
-      font-size: 1em;
-      font-weight: bold;
+      border-radius: 6px;
+      font-size: 16px;
       cursor: pointer;
-      transition: background 0.3s ease;
-      margin-top: 10px;
     }
 
-    .login-container button:hover {
-      background: #2e7d32;
-    }
-
-    .login-container button:disabled {
-      background: #ccc;
+    button:disabled {
+      background-color: #ccc;
       cursor: not-allowed;
     }
 
-    .login-container .back {
-      display: block;
-      margin-top: 20px;
-      text-align: center;
-      color: #666;
-      text-decoration: none;
-      font-size: 0.9em;
-    }
-
-    .login-container .back:hover {
-      text-decoration: underline;
-    }
-
-    .credentials-info {
-      margin-top: 20px;
-      padding: 15px;
-      background: #f0f9f0;
-      border-radius: 8px;
-      font-size: 0.85em;
-      color: #555;
-    }
-
-    .credentials-info h4 {
-      margin-top: 0;
-      color: #2e7d32;
-    }
-
-    .credentials-info ul {
-      margin: 5px 0;
-      padding-left: 20px;
-    }
-
     .error-message {
-      background: #ffebee;
-      color: #d32f2f;
+      background-color: #f8d7da;
+      color: #721c24;
       padding: 10px;
-      border-radius: 8px;
-      margin-bottom: 15px;
+      margin-bottom: 10px;
+      border-radius: 6px;
       text-align: center;
     }
   </style>
@@ -153,66 +85,41 @@
 <body>
   <div class="login-container">
     <h2>Login</h2>
-    
-    <div class="role-selector">
-      <label>Select Login Type:</label>
-      <div class="role-options">
-        <div class="role-option" data-role="user">
-          <div class="role-icon">👤</div>
-          <div>User</div>
-        </div>
-        <div class="role-option" data-role="doctor">
-          <div class="role-icon">👨‍⚕️</div>
-          <div>Doctor</div>
-        </div>
-      </div>
+
+    <div class="role-selection">
+      <div class="role-option" data-role="user">User</div>
+      <div class="role-option" data-role="doctor">Doctor</div>
     </div>
 
-    <form action="/login" method="POST" id="loginForm">
-      <input type="hidden" name="loginType" id="loginType" value="">
+    <form method="POST" action="/login">
       <input type="text" name="username" placeholder="Username" required />
       <input type="password" name="password" placeholder="Password" required />
+      <input type="hidden" name="loginType" id="loginType" />
       <button type="submit" id="loginBtn" disabled>Login</button>
     </form>
-
-    <div class="credentials-info">
-      <h4>Demo Credentials:</h4>
-      <strong>User Login:</strong>
-      <ul>
-        <li>Username: user | Password: pass</li>
-        <li>Username: admin | Password: admin123</li>
-      </ul>
-      <strong>Doctor Login:</strong>
-      <ul>
-        <li>Username: doctor1 | Password: medical456</li>
-        <li>Username: doctor2 | Password: grace2024</li>
-      </ul>
-    </div>
-
-    <a class="back" href="/">← Back to Home</a>
   </div>
 
   <script>
     const roleOptions = document.querySelectorAll('.role-option');
     const loginTypeInput = document.getElementById('loginType');
     const loginBtn = document.getElementById('loginBtn');
-    
+
     roleOptions.forEach(option => {
       option.addEventListener('click', () => {
         // Remove selected class from all options
         roleOptions.forEach(opt => opt.classList.remove('selected'));
-        
+
         // Add selected class to clicked option
         option.classList.add('selected');
-        
+
         // Set the login type
         const role = option.dataset.role;
         loginTypeInput.value = role;
-        
+
         // Enable login button
         loginBtn.disabled = false;
-        
-        // Update placeholder text based on role
+
+        // Update placeholder
         const usernameInput = document.querySelector('input[name="username"]');
         if (role === 'doctor') {
           usernameInput.placeholder = 'Username (e.g., doctor1)';
@@ -222,7 +129,7 @@
       });
     });
 
-    // Check for error messages in URL
+    // Show error message from URL
     const urlParams = new URLSearchParams(window.location.search);
     const error = urlParams.get('error');
     if (error) {
@@ -231,6 +138,26 @@
       errorDiv.textContent = decodeURIComponent(error);
       document.querySelector('.login-container').insertBefore(errorDiv, document.querySelector('form'));
     }
+
+    // Prefill credentials after signup
+    window.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('prefill') === 'true') {
+        const username = params.get('username') || '';
+        const password = params.get('password') || '';
+        const loginType = params.get('loginType') || '';
+
+        document.querySelector('input[name="username"]').value = username;
+        document.querySelector('input[name="password"]').value = password;
+        loginTypeInput.value = loginType;
+
+        const selectedOption = document.querySelector(`.role-option[data-role="${loginType}"]`);
+        if (selectedOption) {
+          selectedOption.classList.add('selected');
+          loginBtn.disabled = false;
+        }
+      }
+    });
   </script>
 </body>
 </html>

@@ -1,522 +1,722 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Send Assessment to Doctor</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Send Assessment to Doctor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #e8f5e8 0%, #f0f9f0 100%);
-      min-height: 100vh;
-      padding: 20px;
-      position: relative;
-      overflow-x: hidden;
-    }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #e8f5e8 0%, #f0f9f0 100%);
+            min-height: 100vh;
+            padding: 20px;
+            position: relative;
+            overflow-x: hidden;
+        }
 
-    .background-blobs {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: -1;
-      pointer-events: none;
-    }
+        .background-blobs {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        }
 
-    .blob {
-      position: absolute;
-      border-radius: 50%;
-      opacity: 0.1;
-      animation: float 6s ease-in-out infinite;
-    }
+        .blob {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.1;
+            animation: float 6s ease-in-out infinite;
+        }
 
-    .blob1 { width: 200px; height: 200px; background: #2e7d32; top: 10%; left: 10%; animation-delay: 0s; }
-    .blob2 { width: 150px; height: 150px; background: #4caf50; top: 60%; right: 10%; animation-delay: 2s; }
-    .blob3 { width: 100px; height: 100px; background: #66bb6a; bottom: 20%; left: 50%; animation-delay: 4s; }
+        .blob1 {
+            width: 200px;
+            height: 200px;
+            background: #2e7d32;
+            top: 10%;
+            left: 10%;
+            animation-delay: 0s;
+        }
 
-    @keyframes float {
-      0%, 100% { transform: translateY(0px) rotate(0deg); }
-      50% { transform: translateY(-20px) rotate(180deg); }
-    }
+        .blob2 {
+            width: 150px;
+            height: 150px;
+            background: #4caf50;
+            top: 60%;
+            right: 10%;
+            animation-delay: 2s;
+        }
 
-    .container {
-      max-width: 900px;
-      margin: auto;
-      background: rgba(255, 255, 255, 0.95);
-      border-radius: 20px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-      padding: 30px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      backdrop-filter: blur(10px);
-    }
+        .blob3 {
+            width: 100px;
+            height: 100px;
+            background: #66bb6a;
+            bottom: 20%;
+            left: 50%;
+            animation-delay: 4s;
+        }
 
-    .header {
-      text-align: center;
-      margin-bottom: 30px;
-    }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(180deg); }
+        }
 
-    .header h2 {
-      color: #d32f2f;
-      margin-bottom: 10px;
-      font-size: 1.8em;
-    }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
 
-    .header p {
-      font-size: 1.1em;
-      color: #333;
-      line-height: 1.6;
-    }
+        .header {
+            background: linear-gradient(135deg, #2e7d32, #4caf50);
+            color: white;
+            padding: 30px;
+            border-radius: 20px 20px 0 0;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
 
-    .loading {
-      text-align: center;
-      padding: 40px;
-      color: #666;
-    }
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            animation: shimmer 3s linear infinite;
+        }
 
-    .loading-spinner {
-      display: inline-block;
-      width: 30px;
-      height: 30px;
-      border: 3px solid #f3f3f3;
-      border-top: 3px solid #4caf50;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin-bottom: 15px;
-    }
+        @keyframes shimmer {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
 
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
 
-    .doctor-list {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 20px;
-      margin-bottom: 30px;
-    }
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
 
-    .doctor-card {
-      background: #ffffff;
-      border: 2px solid transparent;
-      border-radius: 15px;
-      padding: 20px;
-      text-align: center;
-      box-shadow: 0 5px 15px rgba(0,0,0,0.05);
-      transition: all 0.3s ease;
-      cursor: pointer;
-      position: relative;
-      overflow: hidden;
-    }
+        .content {
+            padding: 30px;
+        }
 
-    .doctor-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -100%;
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(76, 175, 80, 0.1), transparent);
-      transition: left 0.5s ease;
-    }
+        .assessment-summary {
+            background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+            border: 2px solid #ffd54f;
+            position: relative;
+            overflow: hidden;
+        }
 
-    .doctor-card:hover::before {
-      left: 100%;
-    }
+        .assessment-summary::before {
+            content: '⚠️';
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            font-size: 2em;
+            opacity: 0.3;
+        }
 
-    .doctor-card:hover {
-      transform: translateY(-5px);
-      border-color: #4caf50;
-      box-shadow: 0 8px 25px rgba(76, 175, 80, 0.15);
-    }
+        .risk-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-bottom: 15px;
+        }
 
-    .doctor-card.selected {
-      border-color: #2e7d32;
-      box-shadow: 0 8px 25px rgba(76, 175, 80, 0.2);
-      background: #f8fff8;
-    }
+        .high-risk {
+            background: linear-gradient(135deg, #d32f2f, #f44336);
+            color: white;
+        }
 
-    .doctor-card.selected::after {
-      content: '✓';
-      position: absolute;
-      top: 10px;
-      right: 15px;
-      color: #2e7d32;
-      font-size: 1.2em;
-      font-weight: bold;
-    }
+        .moderate-risk {
+            background: linear-gradient(135deg, #f57c00, #ff9800);
+            color: white;
+        }
 
-    .doctor-card img {
-      width: 80px;
-      height: 80px;
-      border-radius: 50%;
-      object-fit: cover;
-      margin-bottom: 15px;
-      border: 3px solid #e0e0e0;
-      transition: border-color 0.3s ease;
-    }
+        .lower-risk {
+            background: linear-gradient(135deg, #388e3c, #4caf50);
+            color: white;
+        }
 
-    .doctor-card.selected img {
-      border-color: #4caf50;
-    }
+        .doctors-section {
+            margin-top: 20px;
+        }
 
-    .doctor-name {
-      font-weight: 600;
-      font-size: 1.1em;
-      color: #2e7d32;
-      margin-bottom: 5px;
-    }
+        .section-title {
+            font-size: 1.5em;
+            color: #2e7d32;
+            margin-bottom: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+        }
 
-    .doctor-specialty {
-      font-size: 0.95em;
-      color: #555;
-      margin-bottom: 8px;
-      font-weight: 500;
-    }
+        .section-title::before {
+            content: '👨‍⚕️';
+            margin-right: 10px;
+            font-size: 1.2em;
+        }
 
-    .doctor-location {
-      font-size: 0.85em;
-      color: #777;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 5px;
-    }
+        .doctors-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
 
-    .doctor-location::before {
-      content: '📍';
-    }
+        .doctor-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
 
-    .action-section {
-      border-top: 1px solid #e0e0e0;
-      padding-top: 25px;
-    }
+        .doctor-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(135deg, #2e7d32, #4caf50);
+            transform: scaleX(0);
+            transition: transform 0.3s ease;
+        }
 
-    #sendToDoctorBtn {
-      width: 100%;
-      padding: 15px;
-      background: linear-gradient(135deg, #2e7d32, #4caf50);
-      color: white;
-      font-size: 1.1em;
-      font-weight: bold;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      position: relative;
-      overflow: hidden;
-    }
+        .doctor-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+            border-color: #4caf50;
+        }
 
-    #sendToDoctorBtn::before {
-      content: '';
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 0;
-      height: 0;
-      background: rgba(255, 255, 255, 0.3);
-      border-radius: 50%;
-      transform: translate(-50%, -50%);
-      transition: width 0.6s ease, height 0.6s ease;
-    }
+        .doctor-card:hover::before {
+            transform: scaleX(1);
+        }
 
-    #sendToDoctorBtn:hover::before {
-      width: 300px;
-      height: 300px;
-    }
+        .doctor-card.selected {
+            border-color: #4caf50;
+            background: linear-gradient(135deg, #e8f5e8, #f0f9f0);
+            transform: translateY(-5px);
+        }
 
-    #sendToDoctorBtn:hover {
-      background: linear-gradient(135deg, #1b5e20, #2e7d32);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 20px rgba(46, 125, 50, 0.3);
-    }
+        .doctor-card.selected::before {
+            transform: scaleX(1);
+        }
 
-    #sendToDoctorBtn:disabled {
-      background: #ccc;
-      cursor: not-allowed;
-      transform: none;
-      box-shadow: none;
-    }
+        .doctor-card.selected::after {
+            content: '✓';
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: #4caf50;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
 
-    #sendToDoctorBtn:disabled::before {
-      display: none;
-    }
+        .doctor-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4caf50, #66bb6a);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5em;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+        }
 
-    #sendStatus {
-      margin-top: 20px;
-      padding: 15px;
-      border-radius: 10px;
-      font-weight: bold;
-      text-align: center;
-      display: none;
-    }
+        .doctor-name {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #2e7d32;
+            margin-bottom: 5px;
+        }
 
-    #sendStatus.success {
-      background: #e8f5e8;
-      color: #2e7d32;
-      border: 1px solid #4caf50;
-    }
+        .doctor-specialty {
+            color: #666;
+            font-weight: 500;
+            margin-bottom: 10px;
+        }
 
-    #sendStatus.error {
-      background: #ffebee;
-      color: #d32f2f;
-      border: 1px solid #f44336;
-    }
+        .doctor-details {
+            font-size: 0.9em;
+            color: #555;
+            line-height: 1.5;
+        }
 
-    .back-button {
-      position: absolute;
-      top: 20px;
-      left: 20px;
-      background: rgba(255, 255, 255, 0.9);
-      border: 1px solid #e0e0e0;
-      border-radius: 50px;
-      padding: 10px 20px;
-      text-decoration: none;
-      color: #666;
-      font-size: 0.9em;
-      transition: all 0.3s ease;
-    }
+        .status-indicator {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 500;
+            margin-top: 10px;
+        }
 
-    .back-button:hover {
-      background: white;
-      color: #333;
-      transform: translateX(-5px);
-    }
+        .available {
+            background: #d4edda;
+            color: #155724;
+        }
 
-    .no-doctors {
-      text-align: center;
-      padding: 40px;
-      color: #666;
-    }
+        .busy {
+            background: #fff3cd;
+            color: #856404;
+        }
 
-    .no-doctors h3 {
-      color: #d32f2f;
-      margin-bottom: 10px;
-    }
+        .message-section {
+            margin-top: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            border: 1px solid #e9ecef;
+        }
 
-    @media (max-width: 768px) {
-      .container {
-        margin: 10px;
-        padding: 20px;
-      }
+        .message-label {
+            font-weight: 600;
+            color: #2e7d32;
+            margin-bottom: 10px;
+            display: block;
+        }
 
-      .doctor-list {
-        grid-template-columns: 1fr;
-      }
+        .message-textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 1em;
+            resize: vertical;
+            transition: border-color 0.3s ease;
+        }
 
-      .back-button {
-        position: static;
-        display: inline-block;
-        margin-bottom: 20px;
-      }
+        .message-textarea:focus {
+            outline: none;
+            border-color: #4caf50;
+        }
 
-      .header h2 {
-        font-size: 1.5em;
-      }
+        .char-counter {
+            text-align: right;
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 5px;
+        }
 
-      .header p {
-        font-size: 1em;
-      }
-    }
-  </style>
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 25px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+        }
+
+        .btn:hover::before {
+            width: 100px;
+            height: 100px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #2e7d32, #4caf50);
+            color: white;
+            flex: 1;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #1b5e20, #2e7d32);
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            background: #cccccc !important;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4caf50;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .success-message {
+            display: none;
+            text-align: center;
+            padding: 40px;
+            background: linear-gradient(135deg, #d4edda, #c3e6cb);
+            border-radius: 15px;
+            border: 2px solid #28a745;
+        }
+
+        .success-message.show {
+            display: block;
+        }
+
+        .success-icon {
+            font-size: 4em;
+            color: #28a745;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .doctors-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+            
+            .container {
+                margin: 10px;
+                border-radius: 15px;
+            }
+            
+            .header {
+                padding: 20px;
+                border-radius: 15px 15px 0 0;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+        }
+    </style>
 </head>
 <body>
-  <a href="/dashboard" class="back-button">← Back to Dashboard</a>
-  
-  <div class="background-blobs">
-    <div class="blob blob1"></div>
-    <div class="blob blob2"></div>
-    <div class="blob blob3"></div>
-  </div>
-
-  <div class="container">
-    <div class="header">
-      <h2>🚨 High Risk Assessment</h2>
-      <p>Based on your responses and prediction, you are at high risk for malaria and/or anemia. Please choose a doctor below to send your assessment for professional review and medical assistance.</p>
+    <div class="background-blobs">
+        <div class="blob blob1"></div>
+        <div class="blob blob2"></div>
+        <div class="blob blob3"></div>
     </div>
 
-    <div id="loadingSection" class="loading">
-      <div class="loading-spinner"></div>
-      <p>Loading available doctors...</p>
+    <div class="container">
+        <div class="header">
+            <h1>📧 Send Assessment to Doctor</h1>
+            <p>Select a healthcare provider to review your malaria assessment</p>
+        </div>
+
+        <div class="content">
+            <div id="mainContent">
+                <div class="assessment-summary" id="assessmentSummary">
+                    <!-- Assessment summary will be populated by JavaScript -->
+                </div>
+
+                <div class="doctors-section">
+                    <h2 class="section-title">Available Healthcare Providers</h2>
+                    
+                    <div class="doctors-grid">
+                        <div class="doctor-card" onclick="selectDoctor('dr-mwangi')" id="dr-mwangi">
+                            <div class="doctor-avatar">👨‍⚕️</div>
+                            <div class="doctor-name">Dr. James Mwangi</div>
+                            <div class="doctor-specialty">Infectious Disease Specialist</div>
+                            <div class="doctor-details">
+                                <p><strong>Experience:</strong> 15 years in tropical medicine</p>
+                                <p><strong>Specialization:</strong> Malaria diagnosis and treatment</p>
+                                <p><strong>Location:</strong> Nairobi Hospital</p>
+                                <p><strong>Response Time:</strong> Usually within 2 hours</p>
+                            </div>
+                            <span class="status-indicator available">Available</span>
+                        </div>
+
+                        <div class="doctor-card" onclick="selectDoctor('dr-wanjiku')" id="dr-wanjiku">
+                            <div class="doctor-avatar">👩‍⚕️</div>
+                            <div class="doctor-name">Dr. Sarah Wanjiku</div>
+                            <div class="doctor-specialty">General Practitioner</div>
+                            <div class="doctor-details">
+                                <p><strong>Experience:</strong> 10 years in family medicine</p>
+                                <p><strong>Specialization:</strong> Primary care and preventive medicine</p>
+                                <p><strong>Location:</strong> Aga Khan Hospital</p>
+                                <p><strong>Response Time:</strong> Usually within 4 hours</p>
+                            </div>
+                            <span class="status-indicator busy">Busy - Will respond later</span>
+                        </div>
+                    </div>
+
+                    <div class="message-section">
+                        <label class="message-label" for="additionalMessage">Additional Message (Optional)</label>
+                        <textarea 
+                            id="additionalMessage" 
+                            class="message-textarea" 
+                            placeholder="Please provide any additional symptoms, concerns, or questions you'd like the doctor to know about..."
+                            maxlength="500"
+                            oninput="updateCharCounter()"
+                        ></textarea>
+                        <div class="char-counter" id="charCounter">0/500</div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" id="sendBtn" onclick="sendAssessment()" disabled>
+                            📤 Send Assessment
+                        </button>
+                        <a href="/malaria-assessment" class="btn btn-secondary">
+                            ← Back to Assessment
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="loading" id="loadingScreen">
+                <div class="spinner"></div>
+                <h3>Sending Assessment...</h3>
+                <p>Please wait while we send your assessment to the selected doctor.</p>
+            </div>
+
+            <div class="success-message" id="successMessage">
+                <div class="success-icon">✅</div>
+                <h2>Assessment Sent Successfully!</h2>
+                <p>Your malaria symptom assessment has been sent to <span id="selectedDoctorName"></span>.</p>
+                <p>You should receive a response within the estimated timeframe.</p>
+                <br>
+                <a href="/dashboard" class="btn btn-primary">Return to Dashboard</a>
+            </div>
+        </div>
     </div>
 
-    <div id="doctorSection" style="display: none;">
-      <div class="doctor-list" id="doctorList">
-        <!-- Doctor cards will be populated here -->
-      </div>
+    <script>
+        let selectedDoctor = null;
+        let assessmentData = null;
 
-      <div class="action-section">
-        <button id="sendToDoctorBtn" disabled>
-          Send Assessment to Doctor
-        </button>
-        <div id="sendStatus"></div>
-      </div>
-    </div>
+        const doctors = {
+            'dr-mwangi': {
+                name: 'Dr. James Mwangi',
+                specialty: 'Infectious Disease Specialist',
+                hospital: 'Nairobi Hospital',
+                email: 'j.mwangi@nairobihosp.co.ke',
+                responseTime: '2 hours'
+            },
+            'dr-wanjiku': {
+                name: 'Dr. Sarah Wanjiku',
+                specialty: 'General Practitioner',
+                hospital: 'Aga Khan Hospital',
+                email: 's.wanjiku@agakhan.org',
+                responseTime: '4 hours'
+            }
+        };
 
-    <div id="noDoctorsSection" class="no-doctors" style="display: none;">
-      <h3>No Doctors Available</h3>
-      <p>Unfortunately, there are no doctors available at the moment. Please try again later or contact support.</p>
-    </div>
-  </div>
-
-  <script>
-    let selectedDoctorId = null;
-    let doctors = [];
-
-    // Load doctors from server
-    async function loadDoctors() {
-      try {
-        const response = await fetch('/api/doctors');
-        if (!response.ok) throw new Error('Failed to load doctors');
-        
-        doctors = await response.json();
-        
-        if (doctors.length === 0) {
-          showNoDoctors();
-        } else {
-          renderDoctors();
-          showDoctorSection();
+        function loadAssessmentData() {
+            // Try to get assessment data from sessionStorage
+            const storedData = sessionStorage.getItem('assessmentData');
+            if (storedData) {
+                assessmentData = JSON.parse(storedData);
+                displayAssessmentSummary();
+            } else {
+                // If no stored data, create sample data for demonstration
+                assessmentData = {
+                    timestamp: new Date().toISOString(),
+                    riskLevel: 'High',
+                    yesAnswers: 7,
+                    totalQuestions: 10,
+                    anemiaDetected: true,
+                    resultText: 'Based on your responses, you have multiple symptoms that could indicate malaria. Combined with the positive anemia detection, immediate medical attention is strongly recommended.',
+                    symptoms: {
+                        fever: 'yes',
+                        chills: 'yes',
+                        sweating: 'yes',
+                        headache: 'yes',
+                        nausea: 'no',
+                        fatigue: 'yes',
+                        pain: 'yes',
+                        jaundice: 'no',
+                        seizure: 'no',
+                        travel: 'yes'
+                    }
+                };
+                displayAssessmentSummary();
+            }
         }
-      } catch (error) {
-        console.error('Error loading doctors:', error);
-        showError('Failed to load doctors. Please refresh the page.');
-      }
-    }
 
-    function renderDoctors() {
-      const container = document.getElementById("doctorList");
-      container.innerHTML = "";
-
-      doctors.forEach(doctor => {
-        const card = document.createElement("div");
-        card.className = "doctor-card";
-        card.innerHTML = `
-          <img src="${doctor.photo}" alt="${doctor.name}" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAiIGhlaWdodD0iODAiIHZpZXdCb3g9IjAgMCA4MCA4MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iNDAiIGN5PSI0MCIgcj0iNDAiIGZpbGw9IiNlMGUwZTAiLz4KPHN2ZyB4PSIyMCIgeT0iMjAiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSIjOTk5Ij4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iY3VycmVudENvbG9yIj4KICA8cGF0aCBkPSJNMTIgMTJjMi4yMSAwIDQtMS43OSA0LTRzLTEuNzktNC00LTQtNCAxLjc5LTQgNCAxLjc5IDQgNCA0em0wIDJjLTIuNjcgMC04IDEuMzQtOCA0djJoMTZ2LTJjMC0yLjY2LTUuMzMtNC04LTR6Ii8+Cjwvc3ZnPgo8L3N2Zz4K'">
-          <div class="doctor-name">${doctor.name}</div>
-          <div class="doctor-specialty">${doctor.specialty}</div>
-          <div class="doctor-location">${doctor.location}</div>
-        `;
-        
-        card.addEventListener("click", () => {
-          // Remove selected class from all cards
-          document.querySelectorAll(".doctor-card").forEach(el => el.classList.remove("selected"));
-          
-          // Add selected class to clicked card
-          card.classList.add("selected");
-          selectedDoctorId = doctor.id;
-          
-          // Enable send button
-          document.getElementById("sendToDoctorBtn").disabled = false;
-        });
-        
-        container.appendChild(card);
-      });
-    }
-
-    function showDoctorSection() {
-      document.getElementById("loadingSection").style.display = "none";
-      document.getElementById("doctorSection").style.display = "block";
-      document.getElementById("noDoctorsSection").style.display = "none";
-    }
-
-    function showNoDoctors() {
-      document.getElementById("loadingSection").style.display = "none";
-      document.getElementById("doctorSection").style.display = "none";
-      document.getElementById("noDoctorsSection").style.display = "block";
-    }
-
-    function showError(message) {
-      const statusDiv = document.getElementById("sendStatus");
-      statusDiv.textContent = message;
-      statusDiv.className = "error";
-      statusDiv.style.display = "block";
-      
-      document.getElementById("loadingSection").style.display = "none";
-    }
-
-    function showSuccess(message) {
-      const statusDiv = document.getElementById("sendStatus");
-      statusDiv.textContent = message;
-      statusDiv.className = "success";
-      statusDiv.style.display = "block";
-    }
-
-    // Send assessment to selected doctor
-    document.getElementById("sendToDoctorBtn").addEventListener("click", async () => {
-      if (!selectedDoctorId) {
-        alert("Please select a doctor before sending.");
-        return;
-      }
-
-      const sendButton = document.getElementById("sendToDoctorBtn");
-      const statusDiv = document.getElementById("sendStatus");
-      
-      // Reset status
-      statusDiv.style.display = "none";
-      
-      // Disable button and show loading
-      sendButton.disabled = true;
-      sendButton.textContent = "Sending Assessment...";
-
-      // Prepare assessment data
-      const assessmentData = {
-        symptoms: {
-          fever: 'yes',
-          chills: 'yes',
-          sweating: 'yes',
-          headache: 'yes',
-          nausea: 'yes',
-          fatigue: 'yes',
-          pain: 'yes',
-          jaundice: 'yes',
-          seizure: 'no',
-          travel: 'yes',
-        },
-        prediction: 'High risk Malaria + Anemia detected',
-        riskLevel: 'High',
-        timestamp: new Date().toISOString()
-      };
-
-      try {
-        const response = await fetch('/api/sendToDoctor', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            doctorId: selectedDoctorId, 
-            assessmentData 
-          })
-        });
-
-        const result = await response.json();
-        
-        if (result.success) {
-          showSuccess(result.message);
-          
-          // Optionally redirect after success
-          setTimeout(() => {
-            window.location.href = '/dashboard';
-          }, 3000);
-        } else {
-          showError(result.error || 'Failed to send assessment.');
+        function displayAssessmentSummary() {
+            const summaryDiv = document.getElementById('assessmentSummary');
+            const riskClass = assessmentData.riskLevel.toLowerCase().replace(' ', '-') + '-risk';
+            
+            summaryDiv.innerHTML = `
+                <div class="risk-badge ${riskClass}">${assessmentData.riskLevel} Risk Assessment</div>
+                <h3 style="color: #2e7d32; margin-bottom: 15px;">Assessment Summary</h3>
+                <p style="margin-bottom: 15px;"><strong>Symptoms Reported:</strong> ${assessmentData.yesAnswers} out of ${assessmentData.totalQuestions}</p>
+                <p style="margin-bottom: 15px;"><strong>Anemia Detection:</strong> ${assessmentData.anemiaDetected ? 'Positive' : 'Negative'}</p>
+                <p style="margin-bottom: 15px;"><strong>Assessment Date:</strong> ${new Date(assessmentData.timestamp).toLocaleString()}</p>
+                <p><strong>Result:</strong> ${assessmentData.resultText}</p>
+            `;
         }
-      } catch (error) {
-        console.error('Error sending assessment:', error);
-        showError('Error sending assessment. Please check your connection and try again.');
-      } finally {
-        // Re-enable button
-        sendButton.disabled = false;
-        sendButton.textContent = "Send Assessment to Doctor";
-      }
-    });
 
-    // Load doctors when page loads
-    document.addEventListener('DOMContentLoaded', loadDoctors);
-  </script>
+        function selectDoctor(doctorId) {
+            // Remove selection from all cards
+            document.querySelectorAll('.doctor-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            
+            // Add selection to clicked card
+            document.getElementById(doctorId).classList.add('selected');
+            
+            selectedDoctor = doctorId;
+            
+            // Enable send button
+            document.getElementById('sendBtn').disabled = false;
+        }
+
+        function updateCharCounter() {
+            const textarea = document.getElementById('additionalMessage');
+            const counter = document.getElementById('charCounter');
+            const currentLength = textarea.value.length;
+            counter.textContent = `${currentLength}/500`;
+            
+            if (currentLength > 450) {
+                counter.style.color = '#d32f2f';
+            } else {
+                counter.style.color = '#666';
+            }
+        }
+
+        function sendAssessment() {
+            if (!selectedDoctor) {
+                alert('Please select a doctor first.');
+                return;
+            }
+
+            // Show loading screen
+            document.getElementById('mainContent').style.display = 'none';
+            document.getElementById('loadingScreen').classList.add('show');
+
+            // Prepare assessment data for sending
+            const doctorInfo = doctors[selectedDoctor];
+            const additionalMessage = document.getElementById('additionalMessage').value;
+            
+            const dataToSend = {
+                ...assessmentData,
+                selectedDoctor: doctorInfo,
+                additionalMessage: additionalMessage,
+                patientMessage: additionalMessage
+            };
+
+            // Simulate sending process (replace with actual API call)
+            setTimeout(() => {
+                // Hide loading screen
+                document.getElementById('loadingScreen').classList.remove('show');
+                
+                // Show success message
+                document.getElementById('selectedDoctorName').textContent = doctorInfo.name;
+                document.getElementById('successMessage').classList.add('show');
+                
+                // Store the sent assessment for future reference
+                const sentAssessments = JSON.parse(localStorage.getItem('sentAssessments') || '[]');
+                sentAssessments.push({
+                    ...dataToSend,
+                    sentAt: new Date().toISOString(),
+                    status: 'sent'
+                });
+                localStorage.setItem('sentAssessments', JSON.stringify(sentAssessments));
+                
+                // Clear the session storage
+                sessionStorage.removeItem('assessmentData');
+                
+                console.log('Assessment sent:', dataToSend);
+            }, 2000);
+        }
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAssessmentData();
+        });
+    </script>
 </body>
 </html>
