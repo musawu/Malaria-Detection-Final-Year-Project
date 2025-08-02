@@ -153,12 +153,12 @@
             color: white;
         }
 
-        .moderate-risk {
+        .moderate-risk, .medium-risk {
             background: linear-gradient(135deg, #f57c00, #ff9800);
             color: white;
         }
 
-        .lower-risk {
+        .lower-risk, .low-risk {
             background: linear-gradient(135deg, #388e3c, #4caf50);
             color: white;
         }
@@ -261,6 +261,14 @@
             font-size: 2.5em;
             margin-bottom: 15px;
             box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+            overflow: hidden;
+        }
+
+        .doctor-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
         }
 
         .doctor-name {
@@ -447,10 +455,56 @@
             display: block;
         }
 
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #f5c6cb;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        .doctors-loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
         .success-icon {
             font-size: 4em;
             color: #28a745;
             margin-bottom: 20px;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #f5c6cb;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        .doctors-loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .doctors-loading .spinner {
+            width: 30px;
+            height: 30px;
+            margin: 0 auto 15px;
         }
 
         @media (max-width: 768px) {
@@ -497,6 +551,8 @@
 
         <div class="content">
             <div id="mainContent">
+                <div class="error-message" id="errorMessage"></div>
+                
                 <div class="assessment-summary" id="assessmentSummary">
                     <!-- Assessment summary will be populated by JavaScript -->
                 </div>
@@ -504,31 +560,10 @@
                 <div class="doctors-section">
                     <h2 class="section-title">Available Healthcare Providers</h2>
                     
-                    <div class="doctors-grid">
-                        <div class="doctor-card" onclick="selectDoctor('dr-mwangi')" id="dr-mwangi">
-                            <div class="doctor-avatar">👨‍⚕️</div>
-                            <div class="doctor-name">Dr. James Mwangi</div>
-                            <div class="doctor-specialty">Infectious Disease Specialist</div>
-                            <div class="doctor-details">
-                                <p><strong>Experience:</strong> 15 years in tropical medicine</p>
-                                <p><strong>Specialization:</strong> Malaria diagnosis and treatment</p>
-                                <p><strong>Location:</strong> Nairobi Hospital</p>
-                                <p><strong>Response Time:</strong> Usually within 2 hours</p>
-                            </div>
-                            <span class="status-indicator available">Available</span>
-                        </div>
-
-                        <div class="doctor-card" onclick="selectDoctor('dr-wanjiku')" id="dr-wanjiku">
-                            <div class="doctor-avatar">👩‍⚕️</div>
-                            <div class="doctor-name">Dr. Sarah Wanjiku</div>
-                            <div class="doctor-specialty">General Practitioner</div>
-                            <div class="doctor-details">
-                                <p><strong>Experience:</strong> 10 years in family medicine</p>
-                                <p><strong>Specialization:</strong> Primary care and preventive medicine</p>
-                                <p><strong>Location:</strong> Aga Khan Hospital</p>
-                                <p><strong>Response Time:</strong> Usually within 4 hours</p>
-                            </div>
-                            <span class="status-indicator busy">Busy - Will respond later</span>
+                    <div id="doctorsContainer">
+                        <div class="doctors-loading">
+                            <div class="spinner"></div>
+                            <p>Loading available doctors...</p>
                         </div>
                     </div>
 
@@ -548,7 +583,7 @@
                         <button class="btn btn-primary" id="sendBtn" onclick="sendAssessment()" disabled>
                             📤 Send Assessment
                         </button>
-                        <a href="/malaria-assessment" class="btn btn-secondary">
+                        <a href="/symptoms" class="btn btn-secondary">
                             ← Back to Assessment
                         </a>
                     </div>
@@ -565,7 +600,7 @@
                 <div class="success-icon">✅</div>
                 <h2>Assessment Sent Successfully!</h2>
                 <p>Your malaria symptom assessment has been sent to <span id="selectedDoctorName"></span>.</p>
-                <p>You should receive a response within the estimated timeframe.</p>
+                <p>You should receive a response soon.</p>
                 <br>
                 <a href="/dashboard" class="btn btn-primary">Return to Dashboard</a>
             </div>
@@ -575,67 +610,143 @@
     <script>
         let selectedDoctor = null;
         let assessmentData = null;
+        let doctors = {};
 
-        const doctors = {
-            'dr-mwangi': {
-                name: 'Dr. James Mwangi',
-                specialty: 'Infectious Disease Specialist',
-                hospital: 'Nairobi Hospital',
-                email: 'j.mwangi@nairobihosp.co.ke',
-                responseTime: '2 hours'
-            },
-            'dr-wanjiku': {
-                name: 'Dr. Sarah Wanjiku',
-                specialty: 'General Practitioner',
-                hospital: 'Aga Khan Hospital',
-                email: 's.wanjiku@agakhan.org',
-                responseTime: '4 hours'
+        // Load doctors from server
+        async function loadDoctors() {
+            try {
+                console.log('Loading doctors from server...');
+                const response = await fetch('/api/doctors');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                doctors = await response.json();
+                console.log('Doctors loaded:', doctors);
+                
+                displayDoctors();
+            } catch (error) {
+                console.error('Error loading doctors:', error);
+                showError('Failed to load available doctors. Please try again later.');
             }
-        };
+        }
+
+        function displayDoctors() {
+            const container = document.getElementById('doctorsContainer');
+            
+            if (Object.keys(doctors).length === 0) {
+                container.innerHTML = `
+                    <div class="doctors-loading">
+                        <p>No doctors available at the moment.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const doctorsGrid = document.createElement('div');
+            doctorsGrid.className = 'doctors-grid';
+
+            Object.entries(doctors).forEach(([doctorId, doctor]) => {
+                const doctorCard = document.createElement('div');
+                doctorCard.className = 'doctor-card';
+                doctorCard.id = `doctor-${doctorId}`;
+                doctorCard.onclick = () => selectDoctor(doctorId);
+
+                // Determine status (for demo purposes, alternating available/busy)
+                const isAvailable = parseInt(doctorId) % 2 === 1;
+                const statusClass = isAvailable ? 'available' : 'busy';
+                const statusText = isAvailable ? 'Available' : 'Busy - Will respond later';
+
+                doctorCard.innerHTML = `
+                    <div class="doctor-avatar">
+                        ${doctor.photo ? 
+                            `<img src="${doctor.photo}" alt="${doctor.name}" onerror="this.parentElement.innerHTML='👨‍⚕️'">` :
+                            '👨‍⚕️'
+                        }
+                    </div>
+                    <div class="doctor-name">${doctor.name}</div>
+                    <div class="doctor-specialty">${doctor.specialty}</div>
+                    <div class="doctor-details">
+                        <p><strong>Specialization:</strong> ${doctor.specialty}</p>
+                        <p><strong>Location:</strong> ${doctor.location}</p>
+                        <p><strong>Username:</strong> ${doctor.username}</p>
+                        <p><strong>Response Time:</strong> Usually within ${isAvailable ? '2' : '4'} hours</p>
+                    </div>
+                    <span class="status-indicator ${statusClass}">${statusText}</span>
+                `;
+
+                doctorsGrid.appendChild(doctorCard);
+            });
+
+            container.innerHTML = '';
+            container.appendChild(doctorsGrid);
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+        }
+
+        function hideError() {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.classList.remove('show');
+        }
 
         function loadAssessmentData() {
-            // Try to get assessment data from sessionStorage
+            // Try to get assessment data from sessionStorage first
             const storedData = sessionStorage.getItem('assessmentData');
             if (storedData) {
                 assessmentData = JSON.parse(storedData);
                 displayAssessmentSummary();
-            } else {
-                // If no stored data, create sample data for demonstration
-                assessmentData = {
-                    timestamp: new Date().toISOString(),
-                    riskLevel: 'High',
-                    yesAnswers: 7,
-                    totalQuestions: 10,
-                    anemiaDetected: true,
-                    resultText: 'Based on your responses, you have multiple symptoms that could indicate malaria. Combined with the positive anemia detection, immediate medical attention is strongly recommended.',
-                    symptoms: {
-                        fever: 'yes',
-                        chills: 'yes',
-                        sweating: 'yes',
-                        headache: 'yes',
-                        nausea: 'no',
-                        fatigue: 'yes',
-                        pain: 'yes',
-                        jaundice: 'no',
-                        seizure: 'no',
-                        travel: 'yes'
-                    }
-                };
-                displayAssessmentSummary();
+                return;
             }
+
+            // Try to get it from localStorage (for persistence)
+            const localData = localStorage.getItem('latestAssessment');
+            if (localData) {
+                assessmentData = JSON.parse(localData);
+                displayAssessmentSummary();
+                return;
+            }
+
+            // If no stored data, create sample data for demonstration
+            assessmentData = {
+                timestamp: new Date().toISOString(),
+                riskLevel: 'High',
+                yesAnswers: 7,
+                totalQuestions: 10,
+                anemiaDetected: true,
+                resultText: 'Based on your responses, you have multiple symptoms that could indicate malaria. Combined with the positive anemia detection, immediate medical attention is strongly recommended.',
+                symptoms: {
+                    fever: 'yes',
+                    chills: 'yes',
+                    sweating: 'yes',
+                    headache: 'yes',
+                    nausea: 'no',
+                    fatigue: 'yes',
+                    pain: 'yes',
+                    jaundice: 'no',
+                    seizure: 'no',
+                    travel: 'yes'
+                }
+            };
+            displayAssessmentSummary();
         }
 
         function displayAssessmentSummary() {
             const summaryDiv = document.getElementById('assessmentSummary');
-            const riskClass = assessmentData.riskLevel.toLowerCase().replace(' ', '-') + '-risk';
+            const riskLevel = assessmentData.riskLevel || 'Medium';
+            const riskClass = riskLevel.toLowerCase().replace(' ', '-') + '-risk';
             
             summaryDiv.innerHTML = `
-                <div class="risk-badge ${riskClass}">${assessmentData.riskLevel} Risk Assessment</div>
+                <div class="risk-badge ${riskClass}">${riskLevel} Risk Assessment</div>
                 <h3 style="color: #2e7d32; margin-bottom: 15px;">Assessment Summary</h3>
-                <p style="margin-bottom: 15px;"><strong>Symptoms Reported:</strong> ${assessmentData.yesAnswers} out of ${assessmentData.totalQuestions}</p>
+                <p style="margin-bottom: 15px;"><strong>Symptoms Reported:</strong> ${assessmentData.yesAnswers || 'N/A'} out of ${assessmentData.totalQuestions || 'N/A'}</p>
                 <p style="margin-bottom: 15px;"><strong>Anemia Detection:</strong> ${assessmentData.anemiaDetected ? 'Positive' : 'Negative'}</p>
                 <p style="margin-bottom: 15px;"><strong>Assessment Date:</strong> ${new Date(assessmentData.timestamp).toLocaleString()}</p>
-                <p><strong>Result:</strong> ${assessmentData.resultText}</p>
+                <p><strong>Result:</strong> ${assessmentData.resultText || 'Assessment completed. Please consult with a healthcare provider.'}</p>
             `;
         }
 
@@ -646,12 +757,15 @@
             });
             
             // Add selection to clicked card
-            document.getElementById(doctorId).classList.add('selected');
-            
-            selectedDoctor = doctorId;
-            
-            // Enable send button
-            document.getElementById('sendBtn').disabled = false;
+            const selectedCard = document.getElementById(`doctor-${doctorId}`);
+            if (selectedCard) {
+                selectedCard.classList.add('selected');
+                selectedDoctor = doctorId;
+                
+                // Enable send button
+                document.getElementById('sendBtn').disabled = false;
+                hideError();
+            }
         }
 
         function updateCharCounter() {
@@ -667,9 +781,9 @@
             }
         }
 
-        function sendAssessment() {
+        async function sendAssessment() {
             if (!selectedDoctor) {
-                alert('Please select a doctor first.');
+                showError('Please select a doctor first.');
                 return;
             }
 
@@ -677,45 +791,68 @@
             document.getElementById('mainContent').style.display = 'none';
             document.getElementById('loadingScreen').classList.add('show');
 
-            // Prepare assessment data for sending
-            const doctorInfo = doctors[selectedDoctor];
-            const additionalMessage = document.getElementById('additionalMessage').value;
-            
-            const dataToSend = {
-                ...assessmentData,
-                selectedDoctor: doctorInfo,
-                additionalMessage: additionalMessage,
-                patientMessage: additionalMessage
-            };
+            try {
+                // Prepare assessment data for sending
+                const additionalMessage = document.getElementById('additionalMessage').value;
+                
+                const dataToSend = {
+                    doctorId: selectedDoctor,
+                    assessmentData: {
+                        ...assessmentData,
+                        additionalMessage: additionalMessage,
+                        patientMessage: additionalMessage
+                    }
+                };
 
-            // Simulate sending process (replace with actual API call)
-            setTimeout(() => {
+                console.log('Sending assessment:', dataToSend);
+
+                // Send to server
+                const response = await fetch('/api/sendToDoctor', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(dataToSend)
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to send assessment');
+                }
+
                 // Hide loading screen
                 document.getElementById('loadingScreen').classList.remove('show');
                 
                 // Show success message
-                document.getElementById('selectedDoctorName').textContent = doctorInfo.name;
+                const doctorInfo = doctors[selectedDoctor];
+                document.getElementById('selectedDoctorName').textContent = doctorInfo ? doctorInfo.name : 'Selected Doctor';
                 document.getElementById('successMessage').classList.add('show');
-                
-                // Store the sent assessment for future reference
-                const sentAssessments = JSON.parse(localStorage.getItem('sentAssessments') || '[]');
-                sentAssessments.push({
-                    ...dataToSend,
-                    sentAt: new Date().toISOString(),
-                    status: 'sent'
-                });
-                localStorage.setItem('sentAssessments', JSON.stringify(sentAssessments));
                 
                 // Clear the session storage
                 sessionStorage.removeItem('assessmentData');
                 
-                console.log('Assessment sent:', dataToSend);
-            }, 2000);
+                console.log('Assessment sent successfully:', result);
+
+            } catch (error) {
+                console.error('Error sending assessment:', error);
+                
+                // Hide loading screen
+                document.getElementById('loadingScreen').classList.remove('show');
+                
+                // Show main content again
+                document.getElementById('mainContent').style.display = 'block';
+                
+                // Show error message
+                showError(error.message || 'Failed to send assessment. Please try again.');
+            }
         }
 
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('Page loaded, initializing...');
             loadAssessmentData();
+            loadDoctors();
         });
     </script>
 </body>

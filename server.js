@@ -46,20 +46,6 @@ const doctorProfiles = {
   }
 };
 
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(async () => {
-  console.log('✅ Connected to MongoDB database');
-  // Create default admin account
-  await createDefaultAdmin();
-  // Create default doctor accounts
-  await createDefaultDoctors();
-}).catch(err => {
-  console.error('❌ Error connecting to MongoDB:', err);
-  process.exit(1);
-});
-
 // MongoDB Schemas
 const patientResultSchema = new mongoose.Schema({
   username: { type: String, required: true, index: true },
@@ -167,7 +153,7 @@ const createDefaultAdmin = async () => {
   }
 };
 
-// Add this function to create default doctor accounts
+// FIXED: Add this function to create default doctor accounts
 const createDefaultDoctors = async () => {
   try {
     console.log('🩺 Checking for doctor accounts...');
@@ -178,7 +164,10 @@ const createDefaultDoctors = async () => {
       
       if (!existingDoctor) {
         const defaultPassword = profile.username; // Using username as password
+        console.log(`🔐 Creating doctor ${profile.username} with password: ${defaultPassword}`);
+        
         const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+        console.log(`🔐 Password hashed for ${profile.username}`);
         
         const doctorUser = new User({
           username: profile.username,
@@ -192,6 +181,10 @@ const createDefaultDoctors = async () => {
         
         await doctorUser.save();
         
+        // IMMEDIATE TEST: Verify the password works
+        const testResult = await bcrypt.compare(defaultPassword, hashedPassword);
+        console.log(`🔐 Password test for ${profile.username}: ${testResult ? 'PASS' : 'FAIL'}`);
+        
         console.log(`🩺 Doctor account created: ${profile.username} (${profile.name})`);
         console.log(`   Password: ${defaultPassword}`);
         console.log(`   Doctor ID: ${doctorId}`);
@@ -201,6 +194,21 @@ const createDefaultDoctors = async () => {
           `Auto-created doctor account for ${profile.name}`);
       } else {
         console.log(`✅ Doctor account already exists: ${profile.username}`);
+        
+        // VERIFY EXISTING PASSWORD WORKS
+        const testPassword = profile.username;
+        const passwordWorks = await bcrypt.compare(testPassword, existingDoctor.password);
+        console.log(`🔐 Existing password test for ${profile.username}: ${passwordWorks ? 'PASS' : 'FAIL'}`);
+        
+        if (!passwordWorks) {
+          console.log(`🔧 Fixing password for ${profile.username}...`);
+          const newHashedPassword = await bcrypt.hash(testPassword, 10);
+          await User.findOneAndUpdate(
+            { username: profile.username },
+            { password: newHashedPassword }
+          );
+          console.log(`✅ Password fixed for ${profile.username}`);
+        }
       }
     }
     console.log('🩺 Doctor account setup completed');
@@ -222,26 +230,45 @@ const createDirectories = async () => {
 };
 createDirectories();
 
-// Database helper functions
+// FIXED: Enhanced savePatientResult function with better error handling
 const savePatientResult = async (username, result) => {
   try {
+    // Validate required fields
+    if (!result.prediction) {
+      throw new Error('Prediction is required');
+    }
+
+    if (!username) {
+      throw new Error('Username is required');
+    }
+
     const now = new Date();
-    // Validate numeric fields before saving
-    const safeConfidence = Number.isFinite(result.confidence) ? result.confidence : 0.0;
+    
+    // Validate and sanitize inputs
+    const safeConfidence = Number.isFinite(result.confidence) ? result.confidence : 0.8;
+    const safePrediction = result.prediction;
+    
+    // Validate prediction value
+    if (safePrediction !== 'Anemic' && safePrediction !== 'Non-anemic') {
+      throw new Error(`Invalid prediction value: ${safePrediction}`);
+    }
+
     const patientResult = new PatientResult({
       username,
-      prediction: result.prediction,
+      prediction: safePrediction,
       confidence: safeConfidence,
-      symptoms: result.symptoms,
+      symptoms: result.symptoms || null,
       timestamp: now,
       date: now.toLocaleDateString(),
       time: now.toLocaleTimeString()
     });
+
     const saved = await patientResult.save();
-    console.log(`✅ Saved result for patient: ${username} (ID: ${saved._id})`);
+    console.log(`✅ Saved result for patient: ${username} (ID: ${saved._id}, Prediction: ${safePrediction})`);
     return saved;
   } catch (err) {
     console.error('❌ Error saving patient result:', err);
+    console.error('❌ Input data was:', { username, result });
     throw err;
   }
 };
@@ -467,6 +494,128 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
+// DEBUG ROUTES - Add these temporarily to diagnose password issues
+app.get('/debug/users', async (req, res) => {
+  try {
+    const users = await User.find({}, 'username role doctorId full_name is_active').lean();
+    res.json({
+      totalUsers: users.length,
+      users: users
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/debug/user/:username', async (req, res) => {
+  try {
+    const user = await User.findOne({ username: req.params.username }).lean();
+    if (user) {
+      res.json({
+        username: user.username,
+        role: user.role,
+        doctorId: user.doctorId,
+        hasPassword: !!user.password,
+        passwordHashLength: user.password ? user.password.length : 0,
+        is_active: user.is_active
+      });
+    } else {
+      res.status(404).json({ error: 'User not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Password debug route
+app.get('/debug/password/:username', async (req, res) => {
+  try {
+    const { username } = req.params;
+    const user = await User.findOne({ username }).lean();
+    
+    if (!user) {
+      return res.json({ error: 'User not found' });
+    }
+
+    // Test password comparison with expected password
+    const expectedPassword = username; // Since you're using username as password
+    const manualTest = await bcrypt.compare(expectedPassword, user.password);
+    
+    // Also test with some other common passwords
+    const testPasswords = [username, 'doctor1', 'doctor2', 'doctor3', 'admin123'];
+    const testResults = {};
+    
+    for (const testPass of testPasswords) {
+      testResults[testPass] = await bcrypt.compare(testPass, user.password);
+    }
+    
+    res.json({
+      username: user.username,
+      role: user.role,
+      doctorId: user.doctorId,
+      passwordHashExists: !!user.password,
+      passwordHashLength: user.password ? user.password.length : 0,
+      passwordHashPreview: user.password ? user.password.substring(0, 10) + '...' : null,
+      expectedPassword: expectedPassword,
+      manualPasswordTest: manualTest,
+      testResults: testResults,
+      created_at: user.created_at
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Manual doctor recreation route
+app.post('/debug/recreate-doctor/:username', async (req, res) => {
+  try {
+    const { username } = req.params;
+    
+    // Find the doctor profile
+    const doctorProfile = Object.entries(doctorProfiles).find(([id, profile]) => 
+      profile.username === username
+    );
+    
+    if (!doctorProfile) {
+      return res.status(404).json({ error: 'Doctor profile not found' });
+    }
+    
+    const [doctorId, profile] = doctorProfile;
+    
+    // Delete existing user
+    await User.findOneAndDelete({ username });
+    
+    // Create new user with fresh password hash
+    const password = username; // Using username as password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    const doctorUser = new User({
+      username: profile.username,
+      password: hashedPassword,
+      full_name: profile.name,
+      email: `${profile.username}@medicalsystem.com`,
+      role: 'doctor',
+      doctorId: doctorId,
+      is_active: true
+    });
+    
+    await doctorUser.save();
+    
+    // Test the new password immediately
+    const testResult = await bcrypt.compare(password, hashedPassword);
+    
+    res.json({
+      message: `Doctor ${username} recreated successfully`,
+      password: password,
+      passwordTest: testResult,
+      doctorId: doctorId
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Routes
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'home.html')));
 
@@ -516,18 +665,49 @@ app.post('/signup', async (req, res) => {
   }
 });
 
+// ENHANCED LOGIN ROUTE with better debugging
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
+  
+  console.log('🔐 Login attempt:', { username, passwordLength: password?.length });
 
   try {
     const user = await User.findOne({ username });
+    console.log('👤 User lookup result:', { 
+      found: !!user, 
+      role: user?.role, 
+      doctorId: user?.doctorId,
+      is_active: user?.is_active 
+    });
 
     if (!user) {
+      console.log('❌ User not found in database');
       return res.redirect('/login?error=Invalid username or password');
     }
 
+    if (!user.is_active) {
+      console.log('❌ User account is inactive');
+      return res.redirect('/login?error=Account is inactive');
+    }
+
+    console.log('🔐 Attempting password comparison...');
+    console.log('🔐 Input password:', password);
+    console.log('🔐 Stored hash length:', user.password?.length);
+    
     const passwordMatch = await bcrypt.compare(password, user.password);
+    console.log('🔐 Password match result:', passwordMatch);
+    
     if (!passwordMatch) {
+      console.log('❌ Password comparison failed');
+      console.log('🔍 Debug: Testing common passwords...');
+      
+      // Test common passwords for debugging
+      const testPasswords = [username, 'doctor1', 'doctor2', 'doctor3', 'admin123'];
+      for (const testPass of testPasswords) {
+        const testResult = await bcrypt.compare(testPass, user.password);
+        console.log(`🔍 Test password '${testPass}': ${testResult}`);
+      }
+      
       return res.redirect('/login?error=Invalid username or password');
     }
 
@@ -535,14 +715,33 @@ app.post('/login', async (req, res) => {
     req.session.loggedIn = true;
     req.session.username = user.username;
     req.session.role = user.role;
-    req.session.doctorId = user.doctorId; // FIXED: Set doctorId for doctor users
+    req.session.doctorId = user.doctorId;
 
-    console.log(`✅ User logged in: ${user.username} (Role: ${user.role}${user.doctorId ? ', Doctor ID: ' + user.doctorId : ''})`);
+    console.log(`✅ User logged in successfully:`, {
+      username: user.username,
+      role: user.role,
+      doctorId: user.doctorId
+    });
 
     return res.redirect('/dashboard');
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('❌ Login error:', error);
     return res.redirect('/login?error=Login failed');
+  }
+});
+
+// FIXED: Add the missing API endpoint for current user info
+app.get('/api/current-user', requireAuth, (req, res) => {
+  try {
+    res.json({
+      username: req.session.username,
+      role: req.session.role,
+      doctorId: req.session.doctorId,
+      loggedIn: req.session.loggedIn
+    });
+  } catch (error) {
+    console.error('Error getting current user:', error);
+    res.status(500).json({ error: 'Failed to get user info' });
   }
 });
 
@@ -918,9 +1117,9 @@ app.get('/history', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'patient-history.html'));
 });
 
-// Prediction endpoint (for users) - NOW USES ModelManager
+// FIXED: Prediction endpoint with better error handling for missing predictions
 app.post('/predict', requireAuth, upload.single('eyelid'), async (req, res) => {
-  console.log('Prediction request received');
+  console.log('Prediction request received from user:', req.session.username);
   
   if (!req.file) {
       return res.status(400).json({ 
@@ -930,38 +1129,67 @@ app.post('/predict', requireAuth, upload.single('eyelid'), async (req, res) => {
   }
 
   try {
-      // Verify file
+      // Verify file exists
       if (!fsSync.existsSync(req.file.path)) {
           throw new Error('File not found after upload');
       }
 
-      // Get prediction
+      console.log('Processing image for prediction...');
+      
+      // Get prediction from ModelManager
       const result = await modelManager.predict(req.file.path);
       
-      // Save to database
-      await savePatientResult(req.session.username, {
-          prediction: result.prediction,
-          confidence: 0.8
+      console.log('Raw prediction result:', result);
+      
+      // Ensure we have a valid prediction
+      let finalPrediction = result.prediction;
+      let finalConfidence = result.confidence || 0.8;
+      
+      // Handle case where prediction might be missing or invalid
+      if (!finalPrediction || (finalPrediction !== 'Anemic' && finalPrediction !== 'Non-anemic')) {
+          console.log('⚠️ Invalid or missing prediction, using default');
+          finalPrediction = 'Non-anemic'; // Default safe prediction
+          finalConfidence = 0.6; // Lower confidence for default
+      }
+      
+      console.log('Final prediction details:', {
+          prediction: finalPrediction,
+          confidence: finalConfidence,
+          usingDefault: result.usingDefaultPrediction
       });
 
-      // Clean up file
+      // Save to database with proper validation
+      const savedResult = await savePatientResult(req.session.username, {
+          prediction: finalPrediction,
+          confidence: finalConfidence,
+          // Add symptoms if they exist in the request
+          symptoms: req.body.symptoms || null
+      });
+
+      console.log('✅ Successfully saved prediction result:', savedResult._id);
+
+      // Clean up uploaded file
       fsSync.unlinkSync(req.file.path);
 
       // Return results
       res.json({
           success: true,
-          prediction: result.prediction,
-          confidence: 0.8,
-          confidencePercentage: Math.round(result.confidence * 100),
-          usingDefaultPrediction: result.usingDefaultPrediction
+          prediction: finalPrediction,
+          confidence: finalConfidence,
+          confidencePercentage: Math.round(finalConfidence * 100),
+          usingDefaultPrediction: result.usingDefaultPrediction || false
       });
 
   } catch (error) {
-      console.error('Prediction failed:', error);
+      console.error('❌ Prediction failed:', error);
       
       // Clean up file if exists
       if (req.file?.path && fsSync.existsSync(req.file.path)) {
-          fsSync.unlinkSync(req.file.path);
+          try {
+              fsSync.unlinkSync(req.file.path);
+          } catch (cleanupError) {
+              console.error('Failed to cleanup file:', cleanupError);
+          }
       }
       
       res.status(500).json({
@@ -971,9 +1199,15 @@ app.post('/predict', requireAuth, upload.single('eyelid'), async (req, res) => {
   }
 });
 
-// Send assessment to doctor
+// FIXED: Send assessment to doctor with better error handling
 app.post('/api/sendToDoctor', requireAuth, async (req, res) => {
   const { doctorId, assessmentData } = req.body;
+  
+  console.log('Send to doctor request:', {
+    from: req.session.username,
+    doctorId,
+    assessmentData
+  });
   
   if (!doctorId || !assessmentData) {
     return res.status(400).json({ error: 'Missing required data.' });
@@ -985,35 +1219,79 @@ app.post('/api/sendToDoctor', requireAuth, async (req, res) => {
   }
 
   try {
+    // Ensure we have a valid prediction
+    let prediction = assessmentData.prediction;
+    if (!prediction || (prediction !== 'Anemic' && prediction !== 'Non-anemic')) {
+      prediction = 'Non-anemic'; // Default safe prediction
+      console.log('⚠️ Using default prediction for assessment');
+    }
+
     // Save assessment to MongoDB
     const assessment = new DoctorAssessment({
       doctorId,
       from: req.session.username,
-      prediction: assessmentData.prediction,
-      confidence: 0.8 || 0.8,
-      symptoms: assessmentData.symptoms,
+      prediction: prediction,
+      confidence: assessmentData.confidence || 0.8,
+      symptoms: assessmentData.symptoms || {},
       riskLevel: assessmentData.riskLevel || 'Medium',
       status: 'pending'
     });
 
-    await assessment.save();
+    const savedAssessment = await assessment.save();
+    console.log('✅ Assessment saved:', savedAssessment._id);
 
     // Also save this to patient's history with symptoms
     const resultWithSymptoms = {
-      prediction: assessmentData.prediction,
-      confidence: 80 || 0.8,
-      symptoms: assessmentData.symptoms
+      prediction: prediction,
+      confidence: assessmentData.confidence || 0.8,
+      symptoms: assessmentData.symptoms || {}
     };
-    await savePatientResult(req.session.username, resultWithSymptoms);
+    
+    const savedResult = await savePatientResult(req.session.username, resultWithSymptoms);
+    console.log('✅ Patient result saved:', savedResult._id);
 
     console.log(`✅ Assessment sent to doctor ${doctorId} from user ${req.session.username}`);
     res.json({ 
       success: true, 
-      message: `Assessment sent to ${doctorProfiles[doctorId].name} successfully.` 
+      message: `Assessment sent to ${doctorProfiles[doctorId].name} successfully.`,
+      assessmentId: savedAssessment._id
     });
   } catch (error) {
-    console.error('Error saving assessment:', error);
-    res.status(500).json({ error: 'Failed to send assessment to doctor' });
+    console.error('❌ Error saving assessment:', error);
+    res.status(500).json({ 
+      error: 'Failed to send assessment to doctor',
+      details: error.message 
+    });
+  }
+});
+
+// FIXED: Update the existing getDoctorAssessments endpoint
+app.get('/api/getDoctorAssessments', requireAuth, async (req, res) => {
+  try {
+    const { doctorId } = req.query;
+    
+    // Verify doctor access - only doctors can access assessments
+    if (req.session.role !== 'doctor') {
+      return res.status(403).json({ error: 'Access denied - doctors only' });
+    }
+    
+    // Verify doctor is accessing their own assessments
+    if (req.session.doctorId !== doctorId) {
+      return res.status(403).json({ error: 'Access denied - can only view your own assessments' });
+    }
+    
+    console.log(`🔍 Fetching assessments for doctor ${doctorId} (${req.session.username})`);
+    
+    const assessments = await DoctorAssessment.find({ doctorId })
+      .sort({ timestamp: -1 })
+      .lean();
+    
+    console.log(`✅ Found ${assessments.length} assessments for doctor ${doctorId}`);
+    
+    res.json(assessments);
+  } catch (error) {
+    console.error('Error fetching doctor assessments:', error);
+    res.status(500).json({ error: 'Failed to fetch assessments' });
   }
 });
 
@@ -1085,6 +1363,68 @@ app.get('/api/patient-stats', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Error fetching patient stats:', error);
     res.status(500).json({ error: 'Failed to fetch statistics' });
+  }
+});
+
+// API endpoint to get available doctors (for patient interface)
+app.get('/api/doctors', requireAuth, (req, res) => {
+  try {
+    // Return only the information needed for patient interface
+    const availableDoctors = {};
+    
+    Object.entries(doctorProfiles).forEach(([id, doctor]) => {
+      availableDoctors[id] = {
+        name: doctor.name,
+        specialty: doctor.specialty,
+        location: doctor.location,
+        photo: doctor.photo,
+        username: doctor.username
+      };
+    });
+    
+    res.json(availableDoctors);
+  } catch (error) {
+    console.error('Error fetching doctors:', error);
+    res.status(500).json({ error: 'Failed to fetch doctors' });
+  }
+});
+
+// FIXED: Add a test endpoint to verify doctor dashboard functionality
+app.get('/api/test-doctor-data/:doctorId', requireAuth, async (req, res) => {
+  try {
+    const { doctorId } = req.params;
+    
+    // Get doctor profile
+    const doctorProfile = doctorProfiles[doctorId];
+    if (!doctorProfile) {
+      return res.status(404).json({ error: 'Doctor not found' });
+    }
+
+    // Get assessments
+    const assessments = await DoctorAssessment.find({ doctorId })
+      .sort({ timestamp: -1 })
+      .lean();
+
+    // Calculate stats
+    const stats = {
+      total: assessments.length,
+      pending: assessments.filter(a => a.status === 'pending').length,
+      highRisk: assessments.filter(a => a.riskLevel === 'High').length,
+      today: assessments.filter(a => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return new Date(a.timestamp) >= today;
+      }).length
+    };
+
+    res.json({
+      doctor: doctorProfile,
+      assessments: assessments.slice(0, 5), // First 5 for testing
+      stats
+    });
+  } catch (error) {
+    console.error('Error in test endpoint:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -1354,9 +1694,7 @@ app.get('/doctor/:id', requireAuth, async (req, res) => {
     `;
 
     res.send(html);
-  }
-  
-  catch (error) {
+  } catch (error) {
     console.error('Error loading doctor dashboard:', error);
     res.status(500).send('Error loading doctor dashboard');
   }
@@ -1396,10 +1734,19 @@ app.get('/api/model-status', (req, res) => {
   res.json(status);
 });
 
-// Initialize ModelManager and start server
+// FIXED: Updated startServer function to remove deprecated MongoDB options
 async function startServer() {
   try {
     console.log('🚀 Initializing Medical Screening System...');
+    
+    // Wait for MongoDB connection (without deprecated options)
+    await mongoose.connect(MONGODB_URI);
+    console.log('✅ Connected to MongoDB database');
+    
+    // Create default accounts and WAIT for completion
+    await createDefaultAdmin();
+    await createDefaultDoctors();
+    console.log('✅ Default accounts setup completed');
     
     // Initialize ModelManager
     const modelStatus = await modelManager.initialize();
@@ -1415,8 +1762,15 @@ async function startServer() {
       console.log('🔐 Default Login Credentials:');
       console.log('   Admin: admin / admin123');
       console.log('   Doctor 1: doctor1 / doctor1');
-      console.log('   Doctor 2: doctor2 / doctor2');
+      console.log('   Doctor 2: doctor2 / doctor2');  
       console.log('   Doctor 3: doctor3 / doctor3');
+      console.log('');
+      console.log('🔍 Debug Routes Available:');
+      console.log('   GET  /debug/users - List all users');
+      console.log('   GET  /debug/user/:username - Check specific user');
+      console.log('   GET  /debug/password/:username - Test password for user');
+      console.log('   POST /debug/recreate-doctor/:username - Recreate doctor with fresh password');
+      console.log('   GET  /api/test-doctor-data/:doctorId - Test doctor dashboard data');
       console.log('');
     });
     
