@@ -21,6 +21,31 @@ const modelManager = new ModelManager();
 // MongoDB Connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/medical_screening_app';
 
+// Doctor profiles (in production, this should be in database)
+const doctorProfiles = {
+  '1': {
+    name: 'Dr. Debra Rinyai',
+    specialty: 'Infectious Diseases',
+    location: 'Nairobi',
+    photo: 'https://media.licdn.com/dms/image/v2/D4D03AQHvreljwrWTHA/profile-displayphoto-shrink_400_400/profile-displayphoto-shrink_400_400/0/1667146142894?e=1756944000&v=beta&t=HCb9MeHFbp1ua5ZFXiroweOhbfXSIGCwGBjv57qiA-o',
+    username: 'doctor1'
+  },
+  '2': {
+    name: 'Dr. Sharon Lavin',
+    specialty: 'Tropical Medicine',
+    location: 'Mombasa',
+    photo: 'https://media.licdn.com/dms/image/v2/C4D03AQEN0VHacwo6DQ/profile-displayphoto-shrink_800_800/profile-displayphoto-shrink_800_800/0/1646507114320?e=1756944000&v=beta&t=Gg51H5SnQ7uN4Kst88Nl8gTVh9TMc1h9aulTarprEPM',
+    username: 'doctor2'
+  },
+  '3': {
+    name: 'Dr. Juliet Ndolo',
+    specialty: 'Tropical Medicine',
+    location: 'Mombasa',
+    photo: 'https://media.licdn.com/dms/image/v2/D4D03AQFHMBsr29kbEw/profile-displayphoto-shrink_400_400/profile-displayphoto-shrink_400_400/0/1713880497242?e=1756944000&v=beta&t=RKRpKW1dP6VTTBPwZBb-d_DRr4hNPi-4r2FIROsLveY',
+    username: 'doctor3'
+  }
+};
+
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
@@ -28,6 +53,8 @@ mongoose.connect(MONGODB_URI, {
   console.log('✅ Connected to MongoDB database');
   // Create default admin account
   await createDefaultAdmin();
+  // Create default doctor accounts
+  await createDefaultDoctors();
 }).catch(err => {
   console.error('❌ Error connecting to MongoDB:', err);
   process.exit(1);
@@ -86,6 +113,22 @@ const User = mongoose.model('User', userSchema);
 const AdminLog = mongoose.model('AdminLog', adminLogSchema);
 const DoctorAssessment = mongoose.model('DoctorAssessment', doctorAssessmentSchema);
 
+// Admin logging function
+const logAdminAction = async (adminUsername, action, targetUser = null, details = null) => {
+  try {
+    const log = new AdminLog({
+      admin_username: adminUsername,
+      action,
+      target_user: targetUser,
+      details
+    });
+    await log.save();
+    console.log(`📝 Admin action logged: ${action} by ${adminUsername}`);
+  } catch (err) {
+    console.error('❌ Error logging admin action:', err);
+  }
+};
+
 // Add this function after your MongoDB connection and before your routes
 const createDefaultAdmin = async () => {
   try {
@@ -124,28 +167,45 @@ const createDefaultAdmin = async () => {
   }
 };
 
-// Doctor profiles (in production, this should be in database)
-const doctorProfiles = {
-  '1': {
-    name: 'Dr. Debra Rinyai',
-    specialty: 'Infectious Diseases',
-    location: 'Nairobi',
-    photo: 'https://media.licdn.com/dms/image/v2/D4D03AQHvreljwrWTHA/profile-displayphoto-shrink_400_400/profile-displayphoto-shrink_400_400/0/1667146142894?e=1756944000&v=beta&t=HCb9MeHFbp1ua5ZFXiroweOhbfXSIGCwGBjv57qiA-o',
-    username: 'doctor1'
-  },
-  '2': {
-    name: 'Dr. Sharon Lavin ',
-    specialty: 'Tropical Medicine',
-    location: 'Mombasa',
-    photo: 'https://media.licdn.com/dms/image/v2/C4D03AQEN0VHacwo6DQ/profile-displayphoto-shrink_800_800/profile-displayphoto-shrink_800_800/0/1646507114320?e=1756944000&v=beta&t=Gg51H5SnQ7uN4Kst88Nl8gTVh9TMc1h9aulTarprEPM',
-    username: 'doctor2'
-  },
-  '3': {
-    name: 'Dr. Juliet Ndolo',
-    specialty: 'Tropical Medicine',
-    location: 'Mombasa',
-    photo: 'https://media.licdn.com/dms/image/v2/D4D03AQFHMBsr29kbEw/profile-displayphoto-shrink_400_400/profile-displayphoto-shrink_400_400/0/1713880497242?e=1756944000&v=beta&t=RKRpKW1dP6VTTBPwZBb-d_DRr4hNPi-4r2FIROsLveY',
-    username: 'doctor3'
+// Add this function to create default doctor accounts
+const createDefaultDoctors = async () => {
+  try {
+    console.log('🩺 Checking for doctor accounts...');
+    
+    // Create doctor accounts based on doctorProfiles
+    for (const [doctorId, profile] of Object.entries(doctorProfiles)) {
+      const existingDoctor = await User.findOne({ username: profile.username });
+      
+      if (!existingDoctor) {
+        const defaultPassword = profile.username; // Using username as password
+        const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+        
+        const doctorUser = new User({
+          username: profile.username,
+          password: hashedPassword,
+          full_name: profile.name,
+          email: `${profile.username}@medicalsystem.com`,
+          role: 'doctor',
+          doctorId: doctorId, // Link to doctorProfiles
+          is_active: true
+        });
+        
+        await doctorUser.save();
+        
+        console.log(`🩺 Doctor account created: ${profile.username} (${profile.name})`);
+        console.log(`   Password: ${defaultPassword}`);
+        console.log(`   Doctor ID: ${doctorId}`);
+        
+        // Log this action
+        await logAdminAction('SYSTEM', 'CREATE_DOCTOR_ACCOUNT', profile.username, 
+          `Auto-created doctor account for ${profile.name}`);
+      } else {
+        console.log(`✅ Doctor account already exists: ${profile.username}`);
+      }
+    }
+    console.log('🩺 Doctor account setup completed');
+  } catch (error) {
+    console.error('❌ Error creating doctor accounts:', error);
   }
 };
 
@@ -161,22 +221,6 @@ const createDirectories = async () => {
   }
 };
 createDirectories();
-
-// Admin logging function
-const logAdminAction = async (adminUsername, action, targetUser = null, details = null) => {
-  try {
-    const log = new AdminLog({
-      admin_username: adminUsername,
-      action,
-      target_user: targetUser,
-      details
-    });
-    await log.save();
-    console.log(`📝 Admin action logged: ${action} by ${adminUsername}`);
-  } catch (err) {
-    console.error('❌ Error logging admin action:', err);
-  }
-};
 
 // Database helper functions
 const savePatientResult = async (username, result) => {
@@ -389,8 +433,6 @@ const upload = multer({
   }
 });
 
-
-
 // Authentication middleware
 const requireAuth = (req, res, next) => {
   if (!req.session.loggedIn) {
@@ -471,6 +513,148 @@ app.post('/signup', async (req, res) => {
   } catch (error) {
     console.error('Signup error:', error);
     res.redirect('/signup?error=Signup failed');
+  }
+});
+
+app.post('/login', async (req, res) => {
+  const { username, password } = req.body;
+
+  try {
+    const user = await User.findOne({ username });
+
+    if (!user) {
+      return res.redirect('/login?error=Invalid username or password');
+    }
+
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      return res.redirect('/login?error=Invalid username or password');
+    }
+
+    // ✅ Credentials are valid
+    req.session.loggedIn = true;
+    req.session.username = user.username;
+    req.session.role = user.role;
+    req.session.doctorId = user.doctorId; // FIXED: Set doctorId for doctor users
+
+    console.log(`✅ User logged in: ${user.username} (Role: ${user.role}${user.doctorId ? ', Doctor ID: ' + user.doctorId : ''})`);
+
+    return res.redirect('/dashboard');
+  } catch (error) {
+    console.error('Login error:', error);
+    return res.redirect('/login?error=Login failed');
+  }
+});
+
+app.get('/dashboard', requireAuth, (req, res) => {
+  // Redirect based on role
+  if (req.session.role === 'doctor') {
+    return res.redirect(`/doctor/${req.session.doctorId}`);
+  }
+  
+  if (req.session.role === 'admin') {
+    return res.redirect('/admin');
+  }
+  
+  // For regular users
+  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
+
+// Admin Dashboard Route - Now serves HTML file
+app.get('/admin', requireAdmin, async (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin-dashboard.html'));
+});
+
+// API endpoint to get dashboard data
+app.get('/api/admin/dashboard-data', requireAdmin, async (req, res) => {
+  try {
+    const stats = await getSystemStats();
+    const allResults = await getAllPatientResults();
+    const allAssessments = await DoctorAssessment.find()
+      .sort({ timestamp: -1 })
+      .lean();
+    const allUsers = await User.find({}, '-password')
+      .sort({ created_at: -1 })
+      .lean();
+
+    // Add doctor names to assessments
+    const assessmentsWithDoctors = allAssessments.map(assessment => ({
+      ...assessment,
+      doctorName: doctorProfiles[assessment.doctorId]?.name || 'Unknown Doctor'
+    }));
+
+    // Calculate summary statistics
+    const totalUsers = await User.countDocuments({ role: { $ne: 'admin' } });
+    const totalTests = await PatientResult.countDocuments();
+    const anemicCases = await PatientResult.countDocuments({ prediction: 'Anemic' });
+    const todayTests = await PatientResult.countDocuments({
+      timestamp: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
+    });
+    const totalAssessments = allAssessments.length;
+
+    const dashboardData = {
+      stats: {
+        totalUsers,
+        totalTests,
+        anemicCases,
+        todayTests,
+        totalAssessments,
+        weeklyTests: stats.weeklyTests || [],
+        monthlyStats: stats.monthlyStats || []
+      },
+      patientResults: allResults.slice(0, 50), // Limit to 50 most recent
+      doctorAssessments: assessmentsWithDoctors.slice(0, 50),
+      users: allUsers
+    };
+
+    res.json(dashboardData);
+  } catch (error) {
+    console.error('Error loading dashboard data:', error);
+    res.status(500).json({ error: 'Failed to load dashboard data' });
+  }
+});
+
+// API endpoint to get all users (for admin)
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  try {
+    const users = await User.find({}, '-password')
+      .sort({ created_at: -1 })
+      .lean();
+    res.json(users);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// API endpoint to get all patient results (for admin)
+app.get('/api/admin/patient-results', requireAdmin, async (req, res) => {
+  try {
+    const results = await getAllPatientResults();
+    res.json(results);
+  } catch (error) {
+    console.error('Error fetching patient results:', error);
+    res.status(500).json({ error: 'Failed to fetch patient results' });
+  }
+});
+
+// API endpoint to get all doctor assessments (for admin)
+app.get('/api/admin/doctor-assessments', requireAdmin, async (req, res) => {
+  try {
+    const assessments = await DoctorAssessment.find()
+      .sort({ timestamp: -1 })
+      .lean();
+    
+    // Add doctor names
+    const assessmentsWithDoctors = assessments.map(assessment => ({
+      ...assessment,
+      doctorName: doctorProfiles[assessment.doctorId]?.name || 'Unknown Doctor'
+    }));
+    
+    res.json(assessmentsWithDoctors);
+  } catch (error) {
+    console.error('Error fetching doctor assessments:', error);
+    res.status(500).json({ error: 'Failed to fetch doctor assessments' });
   }
 });
 
@@ -585,70 +769,139 @@ app.post('/api/users', requireAdmin, async (req, res) => {
   }
 });
 
-// ... [Other API endpoints remain the same] ...
-
-app.post('/login', async (req, res) => {
-  const { username, password } = req.body;
-
+// API endpoint to update user (for admin)
+app.put('/api/admin/users/:username', requireAdmin, async (req, res) => {
   try {
+    const { username } = req.params;
+    const updateData = req.body;
+    
+    // Remove sensitive fields that shouldn't be updated this way
+    delete updateData.password;
+    delete updateData._id;
+    
+    const updatedUser = await User.findOneAndUpdate(
+      { username },
+      updateData,
+      { new: true, select: '-password' }
+    );
+    
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    await logAdminAction(req.session.username, 'UPDATE_USER', username, 
+      `Updated user information`);
+    
+    res.json({ success: true, user: updatedUser });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
+// API endpoint to delete user (for admin)
+app.delete('/api/admin/users/:username', requireAdmin, async (req, res) => {
+  try {
+    const { username } = req.params;
+    
+    // Prevent deleting admin users
     const user = await User.findOne({ username });
-
     if (!user) {
-      return res.redirect('/login?error=Invalid username or password');
+      return res.status(404).json({ error: 'User not found' });
     }
-
-    const passwordMatch = await bcrypt.compare(password, user.password);
-    if (!passwordMatch) {
-      return res.redirect('/login?error=Invalid username or password');
+    
+    if (user.role === 'admin') {
+      return res.status(403).json({ error: 'Cannot delete admin users' });
     }
-
-    // ✅ Credentials are valid
-    req.session.loggedIn = true;
-    req.session.username = user.username;
-    req.session.role = user.role;
-
-    return res.redirect('/dashboard');
+    
+    await User.findOneAndDelete({ username });
+    
+    await logAdminAction(req.session.username, 'DELETE_USER', username, 
+      `Deleted user account`);
+    
+    res.json({ success: true, message: 'User deleted successfully' });
   } catch (error) {
-    console.error('Login error:', error);
-    return res.redirect('/login?error=Login failed');
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
   }
 });
 
-app.get('/dashboard', requireAuth, (req, res) => {
-  // Redirect based on role
-  if (req.session.role === 'doctor') {
-    return res.redirect(`/doctor/${req.session.doctorId}`);
-  }
-  
-  if (req.session.role === 'admin') {
-    return res.redirect('/admin');
-  }
-  
-  // For regular users
-  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
-});
-
-// Admin Dashboard Route
-app.get('/admin', requireAdmin, async (req, res) => {
+// API endpoint to suspend/activate user (for admin)
+app.post('/api/admin/users/:username/toggle-status', requireAdmin, async (req, res) => {
   try {
-    const stats = await getSystemStats();
-    const allResults = await getAllPatientResults();
-    const allAssessments = await DoctorAssessment.find()
-      .sort({ timestamp: -1 })
-      .lean();
-
-    // Add doctor names to assessments
-    const assessmentsWithDoctors = allAssessments.map(assessment => ({
-      ...assessment,
-      doctorName: doctorProfiles[assessment.doctorId]?.name || 'Unknown Doctor'
-    }));
-
-    // Generate comprehensive admin dashboard HTML
-    const html = generateAdminDashboardHTML(stats, allResults, assessmentsWithDoctors, req.session.username);
-    res.send(html);
+    const { username } = req.params;
+    
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Prevent suspending admin users
+    if (user.role === 'admin') {
+      return res.status(403).json({ error: 'Cannot suspend admin users' });
+    }
+    
+    user.is_active = !user.is_active;
+    await user.save();
+    
+    await logAdminAction(req.session.username, 
+      user.is_active ? 'ACTIVATE_USER' : 'SUSPEND_USER', 
+      username, 
+      `${user.is_active ? 'Activated' : 'Suspended'} user account`);
+    
+    res.json({ 
+      success: true, 
+      message: `User ${user.is_active ? 'activated' : 'suspended'} successfully`,
+      user: { username: user.username, is_active: user.is_active }
+    });
   } catch (error) {
-    console.error('Error loading admin dashboard:', error);
-    res.status(500).send('Error loading admin dashboard');
+    console.error('Error toggling user status:', error);
+    res.status(500).json({ error: 'Failed to update user status' });
+  }
+});
+
+// API endpoint to reset user password (for admin)
+app.post('/api/admin/users/:username/reset-password', requireAdmin, async (req, res) => {
+  try {
+    const { username } = req.params;
+    
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Generate temporary password
+    const tempPassword = Math.random().toString(36).slice(-8);
+    const hashedPassword = await bcrypt.hash(tempPassword, 10);
+    
+    user.password = hashedPassword;
+    await user.save();
+    
+    await logAdminAction(req.session.username, 'RESET_PASSWORD', username, 
+      'Password reset by admin');
+    
+    res.json({ 
+      success: true, 
+      message: 'Password reset successfully',
+      tempPassword: tempPassword // In production, send this via email instead
+    });
+  } catch (error) {
+    console.error('Error resetting password:', error);
+    res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// API endpoint to get admin logs
+app.get('/api/admin/logs', requireAdmin, async (req, res) => {
+  try {
+    const logs = await AdminLog.find()
+      .sort({ timestamp: -1 })
+      .limit(100)
+      .lean();
+    res.json(logs);
+  } catch (error) {
+    console.error('Error fetching admin logs:', error);
+    res.status(500).json({ error: 'Failed to fetch logs' });
   }
 });
 
@@ -905,8 +1158,8 @@ app.get('/doctor/:id', requireAuth, async (req, res) => {
             gap: 20px;
           }
           .doctor-info img {
-            width: 0.8px;
-            height: 0.8px;
+            width: 80px;
+            height: 80px;
             border-radius: 50%;
             border: 3px solid #4caf50;
           }
@@ -1158,537 +1411,19 @@ async function startServer() {
       console.log(`📱 Medical Screening System is ready!`);
       console.log(`🌐 Access the application at: http://localhost:${PORT}`);
       console.log(`🤖 Model Status: ${modelStatus.isLoaded ? 'Loaded' : 'Using Default Predictions'}`);
+      console.log('');
+      console.log('🔐 Default Login Credentials:');
+      console.log('   Admin: admin / admin123');
+      console.log('   Doctor 1: doctor1 / doctor1');
+      console.log('   Doctor 2: doctor2 / doctor2');
+      console.log('   Doctor 3: doctor3 / doctor3');
+      console.log('');
     });
     
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);
   }
-}
-
-// Add the missing admin dashboard HTML generation function
-function generateAdminDashboardHTML(stats, results, assessments, adminUsername) {
-  const totalUsers = stats.totalUsers[0]?.count || 0;
-  const totalTests = stats.totalTests[0]?.count || 0;
-  const anemicCases = stats.anemicCases[0]?.count || 0;
-  const todayTests = stats.todayTests[0]?.count || 0;
-  const totalDoctors = Object.keys(doctorProfiles).length;
-  const totalAssessments = assessments.length;
-
-  return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - Medical Screening System</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: #333;
-        }
-        
-        .admin-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        .admin-header {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 30px;
-            margin-bottom: 30px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .admin-title {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-        
-        .admin-title h1 {
-            color: #2c3e50;
-            font-size: 2.5em;
-            font-weight: 700;
-        }
-        
-        .admin-badge {
-            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
-            color: white;
-            padding: 8px 16px;
-            border-radius: 25px;
-            font-size: 0.9em;
-            font-weight: 600;
-        }
-        
-        .admin-actions {
-            display: flex;
-            gap: 15px;
-        }
-        
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            font-weight: 600;
-            text-decoration: none;
-            display: inline-block;
-            transition: all 0.3s ease;
-        }
-        
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-        }
-        
-        .btn-danger {
-            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
-            color: white;
-        }
-        
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
-        }
-        
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .stat-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 30px;
-            text-align: center;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            transition: transform 0.3s ease;
-        }
-        
-        .stat-card:hover {
-            transform: translateY(-5px);
-        }
-        
-        .stat-card h3 {
-            font-size: 3em;
-            font-weight: 700;
-            margin-bottom: 10px;
-        }
-        
-        .stat-card p {
-            color: #666;
-            font-size: 1.1em;
-            margin-bottom: 5px;
-        }
-        
-        .stat-users h3 { color: #3498db; }
-        .stat-tests h3 { color: #2ecc71; }
-        .stat-anemic h3 { color: #e74c3c; }
-        .stat-today h3 { color: #f39c12; }
-        .stat-doctors h3 { color: #9b59b6; }
-        .stat-assessments h3 { color: #1abc9c; }
-        
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 30px;
-            margin-bottom: 30px;
-        }
-        
-        .chart-container {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-        }
-        
-        .chart-title {
-            font-size: 1.5em;
-            font-weight: 600;
-            margin-bottom: 20px;
-            color: #2c3e50;
-        }
-        
-        .data-section {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            margin-bottom: 30px;
-        }
-        
-        .section-title {
-            font-size: 1.8em;
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .data-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        
-        .data-table th,
-        .data-table td {
-            padding: 15px 10px;
-            text-align: left;
-            border-bottom: 1px solid #e0e0e0;
-        }
-        
-        .data-table th {
-            background: #f8f9fa;
-            font-weight: 600;
-            color: #2c3e50;
-        }
-        
-        .data-table tr:hover {
-            background: #f8f9fa;
-        }
-        
-        .status-badge {
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 0.8em;
-            font-weight: 600;
-        }
-        
-        .status-anemic {
-            background: #ffebee;
-            color: #c62828;
-        }
-        
-        .status-normal {
-            background: #e8f5e8;
-            color: #2e7d32;
-        }
-        
-        .tabs {
-            display: flex;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 15px;
-            padding: 5px;
-            margin-bottom: 20px;
-        }
-        
-        .tab {
-            flex: 1;
-            padding: 12px 20px;
-            text-align: center;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            color: white;
-            font-weight: 600;
-        }
-        
-        .tab.active {
-            background: rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(10px);
-        }
-        
-        .tab-content {
-            display: none;
-        }
-        
-        .tab-content.active {
-            display: block;
-        }
-        
-        .search-box {
-            width: 100%;
-            padding: 15px;
-            border: none;
-            border-radius: 10px;
-            font-size: 1em;
-            margin-bottom: 20px;
-            background: rgba(255, 255, 255, 0.9);
-        }
-        
-        @media (max-width: 768px) {
-            .dashboard-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .stats-grid {
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            }
-            
-            .admin-header {
-                flex-direction: column;
-                gap: 20px;
-                text-align: center;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="admin-container">
-        <!-- Header -->
-        <div class="admin-header">
-            <div class="admin-title">
-                <h1>Admin Dashboard</h1>
-                <div class="admin-badge">Administrator</div>
-            </div>
-            <div class="admin-actions">
-                <button class="btn btn-primary" onclick="refreshDashboard()">🔄 Refresh</button>
-                <button class="btn btn-primary" onclick="exportAllData()">📊 Export Data</button>
-                <form action="/logout" method="POST" style="display: inline;">
-                    <button type="submit" class="btn btn-danger">Logout</button>
-                </form>
-            </div>
-        </div>
-
-        <!-- Statistics Cards -->
-        <div class="stats-grid">
-            <div class="stat-card stat-users">
-                <h3>${totalUsers}</h3>
-                <p>Total Users</p>
-                <small>Registered patients</small>
-            </div>
-            <div class="stat-card stat-tests">
-                <h3>${totalTests}</h3>
-                <p>Total Tests</p>
-                <small>All screening tests</small>
-            </div>
-            <div class="stat-card stat-anemic">
-                <h3>${anemicCases}</h3>
-                <p>Anemic Cases</p>
-                <small>Positive detections</small>
-            </div>
-            <div class="stat-card stat-today">
-                <h3>${todayTests}</h3>
-                <p>Today's Tests</p>
-                <small>Tests performed today</small>
-            </div>
-            <div class="stat-card stat-doctors">
-                <h3>${totalDoctors}</h3>
-                <p>Active Doctors</p>
-                <small>Medical professionals</small>
-            </div>
-            <div class="stat-card stat-assessments">
-                <h3>${totalAssessments}</h3>
-                <p>Assessments</p>
-                <small>Doctor consultations</small>
-            </div>
-        </div>
-
-        <!-- Data Tables Section -->
-        <div class="data-section">
-            <div class="tabs">
-                <div class="tab active" onclick="showTab('patients')">👥 Patient Data</div>
-                <div class="tab" onclick="showTab('doctors')">👨‍⚕️ Doctor Activity</div>
-                <div class="tab" onclick="showTab('system')">⚙️ System Status</div>
-            </div>
-
-            <div id="patients" class="tab-content active">
-                <input type="text" class="search-box" placeholder="🔍 Search patients..." onkeyup="filterTable('patientTable', this.value)">
-                <table class="data-table" id="patientTable">
-                    <thead>
-                        <tr>
-                            <th>Patient</th>
-                            <th>Prediction</th>
-                            <th>Confidence</th>
-                            <th>Symptoms</th>
-                            <th>Date</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${results.slice(0, 50).map(result => `
-                            <tr>
-                                <td><strong>${result.username}</strong></td>
-                                <td><span class="status-badge ${result.prediction === 'Anemic' ? 'status-anemic' : 'status-normal'}">${result.prediction}</span></td>
-                                <td>${(result.confidence * 100).toFixed(1)}%</td>
-                                <td>${result.symptoms ? Object.keys(result.symptoms).length + ' symptoms' : 'None'}</td>
-                                <td>${new Date(result.timestamp).toLocaleDateString()}</td>
-                                <td>
-                                    <button class="btn btn-primary" style="font-size: 0.8em; padding: 5px 10px;" onclick="viewPatientDetails('${result.username}', '${result._id}')">View</button>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-
-            <div id="doctors" class="tab-content">
-                <input type="text" class="search-box" placeholder="🔍 Search assessments..." onkeyup="filterTable('doctorTable', this.value)">
-                <table class="data-table" id="doctorTable">
-                    <thead>
-                        <tr>
-                            <th>Doctor</th>
-                            <th>Patient</th>
-                            <th>Risk Level</th>
-                            <th>Prediction</th>
-                            <th>Date</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${assessments.map(assessment => `
-                            <tr>
-                                <td><strong>${assessment.doctorName}</strong></td>
-                                <td>${assessment.from}</td>
-                                <td><span class="status-badge ${assessment.riskLevel === 'High' ? 'status-anemic' : assessment.riskLevel === 'Medium' ? 'status-pending' : 'status-normal'}">${assessment.riskLevel || 'Medium'}</span></td>
-                                <td>${assessment.prediction || 'N/A'}</td>
-                                <td>${new Date(assessment.timestamp).toLocaleDateString()}</td>
-                                <td><span class="status-badge status-pending">${assessment.status || 'pending'}</span></td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-
-            <div id="system" class="tab-content">
-                <div class="model-status">
-                    <h4>🤖 Model Status</h4>
-                    <div id="modelStatusInfo">Loading...</div>
-                </div>
-                <div style="margin-top: 30px;">
-                    <h4>📊 System Health</h4>
-                    <button class="btn btn-primary" onclick="checkSystemHealth()">Check Health</button>
-                    <button class="btn btn-primary" onclick="checkModelStatus()">Model Status</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // Tab functionality
-        function showTab(tabName) {
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('active');
-            });
-            
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            
-            document.getElementById(tabName).classList.add('active');
-            event.target.classList.add('active');
-            
-            // Load model status when system tab is shown
-            if (tabName === 'system') {
-                checkModelStatus();
-            }
-        }
-
-        // Table filtering
-        function filterTable(tableId, searchValue) {
-            const table = document.getElementById(tableId);
-            const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
-            
-            for (let i = 0; i < rows.length; i++) {
-                const row = rows[i];
-                const cells = row.getElementsByTagName('td');
-                let found = false;
-                
-                for (let j = 0; j < cells.length; j++) {
-                    if (cells[j].textContent.toLowerCase().includes(searchValue.toLowerCase())) {
-                        found = true;
-                        break;
-                    }
-                }
-                
-                row.style.display = found ? '' : 'none';
-            }
-        }
-
-        // Admin functions
-        function refreshDashboard() {
-            location.reload();
-        }
-
-        function exportAllData() {
-            window.open('/api/admin/export-all', '_blank');
-        }
-
-        function viewPatientDetails(username, resultId) {
-            fetch(\`/api/admin/patient-details/\${username}\`)
-                .then(response => response.json())
-                .then(data => {
-                    alert(\`Patient: \${username}\\nTotal Tests: \${data.totalTests}\\nLast Test: \${data.lastTest}\\nAnemic Results: \${data.anemicCount}\`);
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Error fetching patient details');
-                });
-        }
-
-        function checkSystemHealth() {
-            fetch('/health')
-                .then(response => response.json())
-                .then(data => {
-                    const healthInfo = \`
-System Status: \${data.status}
-Database: \${data.databaseConnected ? 'Connected' : 'Disconnected'}
-Model Loaded: \${data.modelManager.isLoaded ? 'Yes' : 'No'}
-Uptime: \${Math.floor(data.uptime / 60)} minutes
-Memory Usage: \${Math.round(data.memoryUsage.used / 1024 / 1024)} MB
-                    \`;
-                    alert(healthInfo);
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Error checking system health');
-                });
-        }
-
-        function checkModelStatus() {
-            fetch('/api/model-status')
-                .then(response => response.json())
-                .then(data => {
-                    const statusDiv = document.getElementById('modelStatusInfo');
-                    const statusColor = data.isLoaded ? '#2ecc71' : '#e74c3c';
-                    const statusText = data.isLoaded ? 'Loaded' : 'Not Loaded';
-                    
-                    statusDiv.innerHTML = \`
-                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 10px;">
-                            <p><strong>Status:</strong> <span style="color: \${statusColor};">\${statusText}</span></p>
-                            <p><strong>Load Attempts:</strong> \${data.loadAttempts}/\${data.maxAttempts}</p>
-                            <p><strong>Model File Exists:</strong> \${data.modelExists ? 'Yes' : 'No'}</p>
-                            <p><strong>Is Loading:</strong> \${data.isLoading ? 'Yes' : 'No'}</p>
-                            <p><strong>Model Path:</strong> \${data.modelPath}</p>
-                        </div>
-                    \`;
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    document.getElementById('modelStatusInfo').innerHTML = '<p style="color: #e74c3c;">Error loading model status</p>';
-                });
-        }
-
-        // Auto-refresh every 5 minutes
-        setInterval(refreshDashboard, 300000);
-    </script>
-</body>
-</html>
-  `;
 }
 
 // Start the server

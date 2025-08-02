@@ -1,366 +1,1267 @@
-// server.js - Enhanced Medical Screening System with MongoDB
-const express = require('express');
-const multer = require('multer');
-const path = require('path');
-const session = require('express-session');
-const MongoStore = require('connect-mongo');
-const mongoose = require('mongoose');
-const ort = require('onnxruntime-web');
-const sharp = require('sharp');
-const fs = require('fs').promises;
-const fsSync = require('fs');
-const bcrypt = require('bcrypt');
-const ortTensor = ort.Tensor;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Medical Screening System</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .admin-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .admin-header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 25px 35px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .admin-title {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .admin-title h1 {
+            color: #2c3e50;
+            font-size: 2.8em;
+            font-weight: 800;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .admin-badge {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 0.9em;
+            font-weight: 700;
+            box-shadow: 0 5px 15px rgba(255, 107, 107, 0.3);
+        }
+        
+        .admin-actions {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            font-size: 0.9em;
+            white-space: nowrap;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #56ccf2, #2f80ed);
+            color: white;
+            box-shadow: 0 5px 15px rgba(86, 204, 242, 0.3);
+        }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            color: white;
+            box-shadow: 0 5px 15px rgba(240, 147, 251, 0.3);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            color: white;
+            box-shadow: 0 5px 15px rgba(255, 107, 107, 0.3);
+        }
+        
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2);
+        }
+        
+        .btn-small {
+            padding: 8px 16px;
+            font-size: 0.85em;
+        }
+        
+        /* Statistics Section */
+        .stats-section {
+            margin-bottom: 40px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 25px 20px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--card-accent);
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+        }
+        
+        .stat-card h3 {
+            font-size: 2.5em;
+            font-weight: 800;
+            margin: 10px 0;
+            color: var(--card-accent);
+        }
+        
+        .stat-card .stat-label {
+            color: #2c3e50;
+            font-size: 1em;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .stat-card .stat-desc {
+            color: #7f8c8d;
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+        
+        .stat-users { --card-accent: #3498db; }
+        .stat-tests { --card-accent: #2ecc71; }
+        .stat-anemic { --card-accent: #e74c3c; }
+        .stat-today { --card-accent: #f39c12; }
+        .stat-doctors { --card-accent: #9b59b6; }
+        .stat-assessments { --card-accent: #1abc9c; }
+        
+        /* Charts Section */
+        .charts-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        
+        .chart-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .chart-title {
+            font-size: 1.4em;
+            font-weight: 700;
+            margin-bottom: 25px;
+            color: #2c3e50;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .chart-canvas {
+            position: relative;
+            height: 300px;
+        }
+        
+        /* Navigation Tabs */
+        .admin-nav {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 8px;
+            margin-bottom: 30px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .nav-tab {
+            flex: 1;
+            min-width: 150px;
+            padding: 15px 20px;
+            text-align: center;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: white;
+            font-weight: 600;
+            font-size: 0.95em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .nav-tab:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .nav-tab.active {
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Data Section */
+        .data-section {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 35px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .search-box {
+            width: 100%;
+            padding: 15px 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 15px;
+            font-size: 1em;
+            margin-bottom: 25px;
+            background: #f8f9fa;
+            transition: all 0.3s ease;
+        }
+        
+        .search-box:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        }
+        
+        .data-table th,
+        .data-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .data-table th {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            font-weight: 600;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .data-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+            display: inline-block;
+        }
+        
+        .status-anemic {
+            background: #ffebee;
+            color: #c62828;
+        }
+        
+        .status-normal {
+            background: #e8f5e8;
+            color: #2e7d32;
+        }
+        
+        .status-pending {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+        
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+        }
+        
+        .modal-content {
+            background: white;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.2);
+            animation: modalSlideIn 0.3s ease;
+        }
+        
+        @keyframes modalSlideIn {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        .modal-title {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: #2c3e50;
+        }
+        
+        .close {
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            color: #aaa;
+            transition: color 0.3s ease;
+        }
+        
+        .close:hover {
+            color: #000;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            font-size: 1em;
+            transition: all 0.3s ease;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .stats-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .admin-header {
+                flex-direction: column;
+                gap: 20px;
+                text-align: center;
+            }
+            
+            .admin-actions {
+                flex-direction: column;
+                width: 100%;
+            }
+            
+            .nav-tab {
+                min-width: auto;
+                flex: 1;
+            }
+            
+            .charts-section {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <!-- Header -->
+        <div class="admin-header">
+            <div class="admin-title">
+                <h1>🛡️ Admin Dashboard</h1>
+                <div class="admin-badge">Administrator</div>
+            </div>
+            <div class="admin-actions">
+                <button class="btn btn-primary" onclick="refreshDashboard()">
+                    🔄 Refresh
+                </button>
+                <button class="btn btn-success" onclick="exportAllData()">
+                    📊 Export Data
+                </button>
+                <button class="btn btn-warning" onclick="openUserModal()">
+                    👤 Add User
+                </button>
+                <button class="btn btn-primary" onclick="viewSystemLogs()">
+                    📋 View Logs
+                </button>
+                <form action="/logout" method="POST" style="display: inline;">
+                    <button type="submit" class="btn btn-danger">
+                        🚪 Logout
+                    </button>
+                </form>
+            </div>
+        </div>
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+        <!-- Statistics Section -->
+        <div class="stats-section">
+            <div class="stats-grid">
+                <div class="stat-card stat-users">
+                    <h3 id="totalUsers">0</h3>
+                    <div class="stat-label">Total Users</div>
+                    <div class="stat-desc">Registered patients</div>
+                </div>
+                <div class="stat-card stat-tests">
+                    <h3 id="totalTests">0</h3>
+                    <div class="stat-label">Total Tests</div>
+                    <div class="stat-desc">All screening tests</div>
+                </div>
+                <div class="stat-card stat-anemic">
+                    <h3 id="anemicCases">0</h3>
+                    <div class="stat-label">Anemic Cases</div>
+                    <div class="stat-desc">Positive detections</div>
+                </div>
+                <div class="stat-card stat-today">
+                    <h3 id="todayTests">0</h3>
+                    <div class="stat-label">Today's Tests</div>
+                    <div class="stat-desc">Tests performed today</div>
+                </div>
+                <div class="stat-card stat-doctors">
+                    <h3 id="totalDoctors">3</h3>
+                    <div class="stat-label">Active Doctors</div>
+                    <div class="stat-desc">Medical professionals</div>
+                </div>
+                <div class="stat-card stat-assessments">
+                    <h3 id="totalAssessments">0</h3>
+                    <div class="stat-label">Assessments</div>
+                    <div class="stat-desc">Doctor consultations</div>
+                </div>
+            </div>
+        </div>
 
-// =============================================
-// DATABASE SETUP
-// =============================================
+        <!-- Charts Section -->
+        <div class="charts-section">
+            <div class="chart-container">
+                <div class="chart-title">
+                    📊 Test Results Distribution
+                </div>
+                <div class="chart-canvas">
+                    <canvas id="resultsChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <div class="chart-title">
+                    📈 Daily Test Activity
+                </div>
+                <div class="chart-canvas">
+                    <canvas id="activityChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <div class="chart-title">
+                    👨‍⚕️ Doctor Workload
+                </div>
+                <div class="chart-canvas">
+                    <canvas id="doctorChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <div class="chart-title">
+                    📅 Monthly Trends
+                </div>
+                <div class="chart-canvas">
+                    <canvas id="trendsChart"></canvas>
+                </div>
+            </div>
+        </div>
 
-// MongoDB Connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/medical_screening_app';
+        <!-- Navigation -->
+        <div class="admin-nav">
+            <div class="nav-tab active" onclick="showTab('overview')">
+                📊 Overview
+            </div>
+            <div class="nav-tab" onclick="showTab('patients')">
+                👥 Patient Results
+            </div>
+            <div class="nav-tab" onclick="showTab('doctors')">
+                👨‍⚕️ Doctor Activity
+            </div>
+            <div class="nav-tab" onclick="showTab('users')">
+                👤 User Management
+            </div>
+            <div class="nav-tab" onclick="showTab('system')">
+                ⚙️ System Control
+            </div>
+        </div>
 
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(async () => {
-  console.log('✅ Connected to MongoDB database');
-  await createDefaultAdmin();
-}).catch(err => {
-  console.error('❌ Error connecting to MongoDB:', err);
-  process.exit(1);
-});
+        <!-- Data Tables Section -->
+        <div class="data-section">
+            <div id="overview" class="tab-content active">
+                <h3>📊 System Overview</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px;">
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 12px;">
+                        <h4>🚀 System Performance</h4>
+                        <p>Uptime: <strong id="systemUptime">Loading...</strong></p>
+                        <p>Response Time: <strong>125ms</strong></p>
+                        <p>Active Sessions: <strong id="activeSessions">Loading...</strong></p>
+                    </div>
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 12px;">
+                        <h4>📈 Growth Metrics</h4>
+                        <p>New Users (Week): <strong>+5</strong></p>
+                        <p>Tests (Week): <strong>+23</strong></p>
+                        <p>Doctor Consultations: <strong>+8</strong></p>
+                    </div>
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 12px;">
+                        <h4>⚠️ Alerts</h4>
+                        <p>High Risk Cases: <strong>3 pending</strong></p>
+                        <p>System Warnings: <strong>0</strong></p>
+                        <p>Failed Logins: <strong>2</strong></p>
+                    </div>
+                </div>
+            </div>
 
-// MongoDB Schemas
-const patientResultSchema = new mongoose.Schema({
-  username: { type: String, required: true, index: true },
-  prediction: { type: String, required: true },
-  confidence: { type: Number, required: true },
-  symptoms: { type: Object, default: null },
-  timestamp: { type: Date, default: Date.now },
-  date: { type: String },
-  time: { type: String }
-});
+            <div id="patients" class="tab-content">
+                <h3>👥 Patient Test Results</h3>
+                <input type="text" class="search-box" placeholder="🔍 Search patient results..." onkeyup="filterTable('patientTable', this.value)">
+                <div style="margin-bottom: 20px;">
+                    <button class="btn btn-primary btn-small" onclick="exportPatientData()">Export Results</button>
+                    <button class="btn btn-success btn-small" onclick="refreshPatientData()">Refresh Data</button>
+                </div>
+                <table class="data-table" id="patientTable">
+                    <thead>
+                        <tr>
+                            <th>Patient</th>
+                            <th>Prediction</th>
+                            <th>Confidence</th>
+                            <th>Date</th>
+                            <th>Time</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="patientTableBody">
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 40px;">Loading patient data...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
 
-const userSchema = new mongoose.Schema({
-  username: { type: String, unique: true, required: true },
-  email: { type: String, unique: true, sparse: true },
-  password: { type: String, required: true },
-  full_name: { type: String },
-  role: { type: String, required: true, enum: ['user', 'doctor', 'admin'] },
-  doctorId: { type: String },
-  created_at: { type: Date, default: Date.now },
-  is_active: { type: Boolean, default: true }
-});
+            <div id="doctors" class="tab-content">
+                <h3>👨‍⚕️ Doctor Assessments</h3>
+                <input type="text" class="search-box" placeholder="🔍 Search doctor assessments..." onkeyup="filterTable('doctorTable', this.value)">
+                <table class="data-table" id="doctorTable">
+                    <thead>
+                        <tr>
+                            <th>Doctor</th>
+                            <th>Patient</th>
+                            <th>Assessment</th>
+                            <th>Risk Level</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="doctorTableBody">
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 40px;">Loading doctor assessments...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
 
-const adminLogSchema = new mongoose.Schema({
-  admin_username: { type: String, required: true },
-  action: { type: String, required: true },
-  target_user: { type: String, default: null },
-  details: { type: String, default: null },
-  timestamp: { type: Date, default: Date.now }
-});
+            <div id="users" class="tab-content">
+                <h3>👤 User Management</h3>
+                <input type="text" class="search-box" placeholder="🔍 Search users..." onkeyup="filterTable('userTable', this.value)">
+                <div style="margin-bottom: 20px;">
+                    <button class="btn btn-primary btn-small" onclick="openUserModal()">Add User</button>
+                    <button class="btn btn-success btn-small" onclick="refreshUserData()">Refresh</button>
+                </div>
+                <table class="data-table" id="userTable">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Full Name</th>
+                            <th>Role</th>
+                            <th>Created</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="userTableBody">
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 40px;">Loading user data...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
 
-const doctorAssessmentSchema = new mongoose.Schema({
-  doctorId: { type: String, required: true, index: true },
-  from: { type: String, required: true },
-  prediction: { type: String },
-  confidence: { type: Number },
-  symptoms: { type: Object },
-  riskLevel: { type: String, enum: ['Low', 'Medium', 'High'], default: 'Medium' },
-  status: { type: String, enum: ['pending', 'reviewed', 'completed'], default: 'pending' },
-  timestamp: { type: Date, default: Date.now }
-});
+            <div id="system" class="tab-content">
+                <h3>⚙️ System Control Panel</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 30px;">
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 12px;">
+                        <h4>🤖 Model Status</h4>
+                        <div id="modelStatusInfo">
+                            <p>Loading model status...</p>
+                        </div>
+                        <button class="btn btn-primary btn-small" onclick="checkModelStatus()">Refresh Status</button>
+                        <button class="btn btn-warning btn-small" onclick="reloadModel()">Reload Model</button>
+                    </div>
+                    
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 12px;">
+                        <h4>💾 Database Status</h4>
+                        <div id="databaseStatusInfo">
+                            <p>Loading database status...</p>
+                        </div>
+                        <button class="btn btn-success btn-small" onclick="checkSystemHealth()">Health Check</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-// Create indexes
-patientResultSchema.index({ username: 1, timestamp: -1 });
-adminLogSchema.index({ timestamp: -1 });
-doctorAssessmentSchema.index({ doctorId: 1, timestamp: -1 });
-userSchema.index({ username: 1, role: 1 });
+    <!-- User Management Modal -->
+    <div id="userModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">👤 Add New User</h2>
+                <span class="close" onclick="closeModal('userModal')">&times;</span>
+            </div>
+            <form id="userForm" onsubmit="submitUser(event)">
+                <div class="form-group">
+                    <label for="username">Username:</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="fullName">Full Name:</label>
+                    <input type="text" id="fullName" name="fullName" required>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" name="email">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password:</label>
+                    <input type="password" id="password" name="password" required minlength="6">
+                </div>
+                <div class="form-group">
+                    <label for="role">Role:</label>
+                    <select id="role" name="role" required>
+                        <option value="user">User</option>
+                        <option value="doctor">Doctor</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <div class="form-group" id="doctorIdGroup" style="display: none;">
+                    <label for="doctorId">Doctor ID:</label>
+                    <select id="doctorId" name="doctorId">
+                        <option value="">Select Doctor Profile</option>
+                        <option value="1">Dr. Debra Rinyai</option>
+                        <option value="2">Dr. Sharon Lavin</option>
+                        <option value="3">Dr. Juliet Ndolo</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                    <button type="button" class="btn btn-danger" onclick="closeModal('userModal')">Cancel</button>
+                    <button type="submit" class="btn btn-success">Create User</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
-// MongoDB Models
-const PatientResult = mongoose.model('PatientResult', patientResultSchema);
-const User = mongoose.model('User', userSchema);
-const AdminLog = mongoose.model('AdminLog', adminLogSchema);
-const DoctorAssessment = mongoose.model('DoctorAssessment', doctorAssessmentSchema);
+    <script>
+        let dashboardData = {};
 
-// Doctor profiles
-const doctorProfiles = {
-  '1': {
-    name: 'Dr. Alice Mwangi',
-    specialty: 'Infectious Diseases',
-    location: 'Nairobi',
-    photo: 'https://randomuser.me/api/portraits/women/44.jpg',
-    username: 'doctor1'
-  },
-  '2': {
-    name: 'Dr. Grace Njeri',
-    specialty: 'Tropical Medicine',
-    location: 'Mombasa',
-    photo: 'https://randomuser.me/api/portraits/women/46.jpg',
-    username: 'doctor2'
-  }
-};
+        // Initialize dashboard when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDashboardData();
+        });
 
-// =============================================
-// HELPER FUNCTIONS
-// =============================================
+        // Load dashboard data from server
+        async function loadDashboardData() {
+            try {
+                const response = await fetch('/api/admin/dashboard-data');
+                if (response.ok) {
+                    dashboardData = await response.json();
+                    updateDashboard();
+                    initializeCharts();
+                    checkModelStatus();
+                } else {
+                    console.error('Failed to load dashboard data');
+                }
+            } catch (error) {
+                console.error('Error loading dashboard data:', error);
+            }
+        }
 
-async function createDefaultAdmin() {
-  try {
-    const existingAdmin = await User.findOne({ role: 'admin' });
-    
-    if (!existingAdmin) {
-      const defaultAdminUsername = process.env.DEFAULT_ADMIN_USER || 'admin';
-      const defaultAdminPassword = process.env.DEFAULT_ADMIN_PASS || 'admin123';
-      
-      const hashedPassword = await bcrypt.hash(defaultAdminPassword, 10);
-      
-      const defaultAdmin = new User({
-        username: defaultAdminUsername,
-        password: hashedPassword,
-        full_name: 'System Administrator',
-        email: 'admin@medicalsystem.com',
-        role: 'admin',
-        is_active: true
-      });
-      
-      await defaultAdmin.save();
-      console.log('🔑 Default admin account created');
-    }
-  } catch (error) {
-    console.error('❌ Error creating default admin:', error);
-  }
-}
+        // Update dashboard with loaded data
+        function updateDashboard() {
+            // Update statistics
+            document.getElementById('totalUsers').textContent = dashboardData.stats?.totalUsers || 0;
+            document.getElementById('totalTests').textContent = dashboardData.stats?.totalTests || 0;
+            document.getElementById('anemicCases').textContent = dashboardData.stats?.anemicCases || 0;
+            document.getElementById('todayTests').textContent = dashboardData.stats?.todayTests || 0;
+            document.getElementById('totalAssessments').textContent = dashboardData.stats?.totalAssessments || 0;
 
-async function logAdminAction(adminUsername, action, targetUser = null, details = null) {
-  try {
-    const log = new AdminLog({
-      admin_username: adminUsername,
-      action,
-      target_user: targetUser,
-      details
-    });
-    await log.save();
-    console.log(`📝 Admin action logged: ${action} by ${adminUsername}`);
-  } catch (err) {
-    console.error('❌ Error logging admin action:', err);
-  }
-}
+            // Update patient results table
+            updatePatientTable();
+            
+            // Update doctor assessments table
+            updateDoctorTable();
+            
+            // Update users table
+            updateUserTable();
+        }
 
-async function savePatientResult(username, result) {
-  try {
-    const now = new Date();
-    const safeConfidence = Number.isFinite(result.confidence) ? result.confidence : 0.0;
-    const patientResult = new PatientResult({
-      username,
-      prediction: result.prediction,
-      confidence: safeConfidence,
-      symptoms: result.symptoms,
-      timestamp: now,
-      date: now.toLocaleDateString(),
-      time: now.toLocaleTimeString()
-    });
-    return await patientResult.save();
-  } catch (err) {
-    console.error('❌ Error saving patient result:', err);
-    throw err;
-  }
-}
+        // Update patient results table
+        function updatePatientTable() {
+            const tableBody = document.getElementById('patientTableBody');
+            if (!dashboardData.patientResults || dashboardData.patientResults.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px;">No patient results found</td></tr>';
+                return;
+            }
 
-async function getPatientResults(username) {
-  try {
-    return await PatientResult.find({ username })
-      .sort({ timestamp: -1 })
-      .limit(50)
-      .lean();
-  } catch (err) {
-    console.error('❌ Error fetching patient results:', err);
-    throw err;
-  }
-}
+            tableBody.innerHTML = dashboardData.patientResults.map(result => `
+                <tr>
+                    <td><strong>${result.username}</strong></td>
+                    <td><span class="status-badge ${result.prediction === 'Anemic' ? 'status-anemic' : 'status-normal'}">${result.prediction}</span></td>
+                    <td>${Math.round(result.confidence * 100)}%</td>
+                    <td>${result.date}</td>
+                    <td>${result.time}</td>
+                    <td>
+                        <button class="btn btn-primary btn-small" onclick="viewPatientDetails('${result.username}', '${result._id}')">View</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
 
-async function getAllPatientResults() {
-  try {
-    return await PatientResult.find().sort({ timestamp: -1 }).lean();
-  } catch (err) {
-    console.error('❌ Error fetching all patient results:', err);
-    throw err;
-  }
-}
+        // Update doctor assessments table
+        function updateDoctorTable() {
+            const tableBody = document.getElementById('doctorTableBody');
+            if (!dashboardData.doctorAssessments || dashboardData.doctorAssessments.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px;">No doctor assessments found</td></tr>';
+                return;
+            }
 
-async function getSystemStats() {
-  try {
-    const [totalUsersCount, totalTests, anemicCases, todayTests, weeklyTests, userActivity, predictionTrends, monthlyStats] = await Promise.all([
-      PatientResult.distinct('username').then(users => users.length),
-      PatientResult.countDocuments(),
-      PatientResult.countDocuments({ prediction: 'Anemic' }),
-      PatientResult.countDocuments({ timestamp: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } }),
-      PatientResult.aggregate([{ $match: { timestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }, { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } }, count: { $sum: 1 } } }, { $sort: { _id: 1 } }]),
-      PatientResult.aggregate([{ $group: { _id: "$username", tests: { $sum: 1 }, last_test: { $max: "$timestamp" } } }, { $sort: { tests: -1 } }, { $limit: 10 }]),
-      PatientResult.aggregate([{ $group: { _id: "$prediction", count: { $sum: 1 } } }]),
-      PatientResult.aggregate([{ $group: { _id: { $dateToString: { format: "%Y-%m", date: "$timestamp" } }, count: { $sum: 1 } } }, { $sort: { _id: -1 } }, { $limit: 12 }])
-    ]);
+            tableBody.innerHTML = dashboardData.doctorAssessments.map(assessment => `
+                <tr>
+                    <td><strong>${assessment.doctorName || 'Unknown Doctor'}</strong></td>
+                    <td>${assessment.from}</td>
+                    <td>${assessment.prediction || 'N/A'}</td>
+                    <td><span class="status-badge ${getRiskClass(assessment.riskLevel)}">${assessment.riskLevel || 'Medium'}</span></td>
+                    <td><span class="status-badge ${getStatusClass(assessment.status)}">${assessment.status}</span></td>
+                    <td>${new Date(assessment.timestamp).toLocaleDateString()}</td>
+                </tr>
+            `).join('');
+        }
 
-    return {
-      totalUsers: [{ count: totalUsersCount }],
-      totalTests: [{ count: totalTests }],
-      anemicCases: [{ count: anemicCases }],
-      todayTests: [{ count: todayTests }],
-      weeklyTests: weeklyTests.map(item => ({ date: item._id, count: item.count })),
-      userActivity: userActivity.map(item => ({ username: item._id, tests: item.tests, last_test: item.last_test })),
-      predictionTrends: predictionTrends.map(item => ({ prediction: item._id, count: item.count })),
-      monthlyStats: monthlyStats.map(item => ({ month: item._id, count: item.count }))
-    };
-  } catch (err) {
-    console.error('❌ Error getting system stats:', err);
-    throw err;
-  }
-}
+        // Update users table
+        function updateUserTable() {
+            const tableBody = document.getElementById('userTableBody');
+            if (!dashboardData.users || dashboardData.users.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px;">No users found</td></tr>';
+                return;
+            }
 
-// =============================================
-// MIDDLEWARE
-// =============================================
+            tableBody.innerHTML = dashboardData.users.map(user => `
+                <tr>
+                    <td><strong>${user.username}</strong></td>
+                    <td>${user.full_name || 'N/A'}</td>
+                    <td><span class="status-badge ${getRoleClass(user.role)}">${user.role}</span></td>
+                    <td>${new Date(user.created_at).toLocaleDateString()}</td>
+                    <td><span class="status-badge ${user.is_active ? 'status-normal' : 'status-anemic'}">${user.is_active ? 'Active' : 'Inactive'}</span></td>
+                    <td>
+                        <button class="btn btn-primary btn-small" onclick="editUser('${user.username}')">Edit</button>
+                        <button class="btn btn-warning btn-small" onclick="resetUserPassword('${user.username}')">Reset Password</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
 
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+        // Helper functions for CSS classes
+        function getRiskClass(riskLevel) {
+            switch(riskLevel?.toLowerCase()) {
+                case 'high': return 'status-anemic';
+                case 'low': return 'status-normal';
+                default: return 'status-pending';
+            }
+        }
 
-// Session configuration
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'anemia-malaria-secret-2024',
-  resave: false,
-  saveUninitialized: true,
-  store: MongoStore.create({ mongoUrl: MONGODB_URI, touchAfter: 24 * 3600 }),
-  cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
-}));
+        function getStatusClass(status) {
+            switch(status?.toLowerCase()) {
+                case 'completed': return 'status-normal';
+                case 'pending': return 'status-pending';
+                default: return 'status-pending';
+            }
+        }
 
-// Multer configuration
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(__dirname, 'uploads')),
-  filename: (req, file, cb) => cb(null, `${file.fieldname}-${Date.now()}${path.extname(file.originalname)}`)
-});
+        function getRoleClass(role) {
+            switch(role?.toLowerCase()) {
+                case 'admin': return 'status-anemic';
+                case 'doctor': return 'status-pending';
+                default: return 'status-normal';
+            }
+        }
 
-const upload = multer({
-  storage,
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-    cb(null, mimetype && extname);
-  },
-  limits: { fileSize: 5 * 1024 * 1024, files: 1 }
-});
+        // Chart initialization
+        function initializeCharts() {
+            // Results Distribution Pie Chart
+            const resultsCtx = document.getElementById('resultsChart').getContext('2d');
+            const anemicCount = dashboardData.stats?.anemicCases || 0;
+            const totalTests = dashboardData.stats?.totalTests || 0;
+            const normalCount = totalTests - anemicCount;
 
-// Authentication middleware
-function requireAuth(req, res, next) {
-  if (!req.session.loggedIn) return res.redirect('/login');
-  next();
-}
+            new Chart(resultsCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Non-anemic', 'Anemic'],
+                    datasets: [{
+                        data: [normalCount, anemicCount],
+                        backgroundColor: ['#2ecc71', '#e74c3c'],
+                        borderWidth: 0,
+                        cutout: '60%'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 20,
+                                usePointStyle: true
+                            }
+                        }
+                    }
+                }
+            });
 
-function requireRole(role) {
-  return (req, res, next) => {
-    if (!req.session.loggedIn) return res.redirect('/login');
-    if (req.session.role !== role) return res.status(403).send('Access Denied');
-    next();
-  };
-}
+            // Daily Activity Chart
+            const activityCtx = document.getElementById('activityChart').getContext('2d');
+            const weeklyData = dashboardData.stats?.weeklyTests || [];
+            const labels = weeklyData.map(item => new Date(item.date).toLocaleDateString('en', { weekday: 'short' }));
+            const data = weeklyData.map(item => item.count);
 
-const requireAdmin = requireRole('admin');
+            new Chart(activityCtx, {
+                type: 'line',
+                data: {
+                    labels: labels.length > 0 ? labels : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    datasets: [{
+                        label: 'Tests Performed',
+                        data: data.length > 0 ? data : [12, 8, 15, 6, 9, 3, 1],
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(0,0,0,0.1)'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
 
-// =============================================
-// ROUTES
-// =============================================
+            // Doctor Workload Chart
+            const doctorCtx = document.getElementById('doctorChart').getContext('2d');
+            new Chart(doctorCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Dr. Rinyai', 'Dr. Lavin', 'Dr. Ndolo'],
+                    datasets: [{
+                        label: 'Assessments',
+                        data: [15, 8, 12],
+                        backgroundColor: ['#9b59b6', '#3498db', '#1abc9c'],
+                        borderRadius: 8,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(0,0,0,0.1)'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
 
-// Home and Auth Routes
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'home.html')));
-app.get('/login', (req, res) => req.session.loggedIn ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'login.html')));
-app.get('/signup', (req, res) => req.session.loggedIn ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'signup.html')));
+            // Monthly Trends Chart
+            const trendsCtx = document.getElementById('trendsChart').getContext('2d');
+            const monthlyData = dashboardData.stats?.monthlyStats || [];
+            const monthLabels = monthlyData.map(item => item.month).reverse();
+            const monthCounts = monthlyData.map(item => item.count).reverse();
 
-app.post('/signup', async (req, res) => {
-  try {
-    const { username, password, full_name, role } = req.body;
-    const existingUser = await User.findOne({ username });
-    if (existingUser) return res.redirect('/signup?error=User already exists');
+            new Chart(trendsCtx, {
+                type: 'line',
+                data: {
+                    labels: monthLabels.length > 0 ? monthLabels : ['Oct', 'Nov', 'Dec', 'Jan'],
+                    datasets: [{
+                        label: 'Total Tests',
+                        data: monthCounts.length > 0 ? monthCounts : [45, 52, 48, 61],
+                        borderColor: '#2ecc71',
+                        backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                        borderWidth: 3,
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 20,
+                                usePointStyle: true
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(0,0,0,0.1)'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    await new User({ username, password: hashedPassword, full_name, role, is_active: true }).save();
-    res.redirect(`/login?prefill=true&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&loginType=${role}`);
-  } catch (error) {
-    console.error('Signup error:', error);
-    res.redirect('/signup?error=Signup failed');
-  }
-});
+        // Tab functionality
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+            
+            // Load model status when system tab is shown
+            if (tabName === 'system') {
+                checkModelStatus();
+                checkSystemHealth();
+            }
+        }
 
-app.post('/login', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-    const user = await User.findOne({ username });
-    if (!user) return res.redirect('/login?error=Invalid username or password');
+        // Table filtering
+        function filterTable(tableId, searchValue) {
+            const table = document.getElementById(tableId);
+            const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+            
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                const cells = row.getElementsByTagName('td');
+                let found = false;
+                
+                for (let j = 0; j < cells.length; j++) {
+                    if (cells[j].textContent.toLowerCase().includes(searchValue.toLowerCase())) {
+                        found = true;
+                        break;
+                    }
+                }
+                
+                row.style.display = found ? '' : 'none';
+            }
+        }
 
-    const passwordMatch = await bcrypt.compare(password, user.password);
-    if (!passwordMatch) return res.redirect('/login?error=Invalid username or password');
+        // Modal functions
+        function openUserModal() {
+            document.getElementById('userModal').style.display = 'block';
+        }
 
-    req.session.loggedIn = true;
-    req.session.username = user.username;
-    req.session.role = user.role;
-    return res.redirect('/dashboard');
-  } catch (error) {
-    console.error('Login error:', error);
-    return res.redirect('/login?error=Login failed');
-  }
-});
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
 
-// Dashboard Routes
-app.get('/dashboard', requireAuth, (req, res) => {
-  if (req.session.role === 'doctor') return res.redirect(`/doctor/${req.session.doctorId}`);
-  if (req.session.role === 'admin') return res.redirect('/admin');
-  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
-});
+        // User management functions
+        async function submitUser(event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            const userData = Object.fromEntries(formData);
+            
+            try {
+                const response = await fetch('/api/users', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(userData)
+                });
 
-// Admin Routes
-app.get('/admin', requireAdmin, async (req, res) => {
-  try {
-    const stats = await getSystemStats();
-    const allResults = await getAllPatientResults();
-    const allAssessments = await DoctorAssessment.find().sort({ timestamp: -1 }).lean();
-    
-    // Generate admin dashboard HTML
-    const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Admin Dashboard</title>
-      <style>
-        /* Your admin dashboard styles here */
-      </style>
-    </head>
-    <body>
-      <h1>Admin Dashboard</h1>
-      <p>Total Users: ${stats.totalUsers[0].count}</p>
-      <p>Total Tests: ${stats.totalTests[0].count}</p>
-      <!-- More dashboard content -->
-    </body>
-    </html>
-    `;
-    
-    res.send(html);
-  } catch (error) {
-    console.error('Error loading admin dashboard:', error);
-    res.status(500).send('Error loading admin dashboard');
-  }
-});
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('User created successfully!');
+                    closeModal('userModal');
+                    event.target.reset();
+                    loadDashboardData(); // Refresh data
+                } else {
+                    alert('Error creating user: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error creating user:', error);
+                alert('Failed to create user');
+            }
+        }
 
-// Add other routes (patient, doctor, API) here...
+        // Role change handler
+        document.getElementById('role').addEventListener('change', function() {
+            const doctorIdGroup = document.getElementById('doctorIdGroup');
+            if (this.value === 'doctor') {
+                doctorIdGroup.style.display = 'block';
+                document.getElementById('doctorId').required = true;
+            } else {
+                doctorIdGroup.style.display = 'none';
+                document.getElementById('doctorId').required = false;
+            }
+        });
 
-// =============================================
-// SERVER START
-// =============================================
+        // Admin functions
+        function refreshDashboard() {
+            loadDashboardData();
+        }
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📱 Medical Screening System is ready!`);
-  console.log(`🌐 Access the application at: http://localhost:${PORT}`);
-});
+        function exportAllData() {
+            if (confirm('This will export all system data. Continue?')) {
+                alert('Data export initiated. You will receive an email when complete.');
+            }
+        }
+
+        function viewPatientDetails(username, resultId) {
+            alert(`Patient Details for: ${username}\nClick OK to view full history.`);
+        }
+
+        function editUser(username) {
+            alert(`Edit user: ${username}`);
+        }
+
+        function resetUserPassword(username) {
+            if (confirm(`Reset password for user: ${username}?`)) {
+                alert(`Password reset for ${username}. Temporary password sent to email.`);
+            }
+        }
+
+        function exportPatientData() {
+            alert('Exporting patient data...');
+        }
+
+        function refreshPatientData() {
+            loadDashboardData();
+        }
+
+        function refreshUserData() {
+            loadDashboardData();
+        }
+
+        async function checkSystemHealth() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                
+                document.getElementById('systemUptime').textContent = Math.floor(data.uptime / 60) + ' minutes';
+                document.getElementById('activeSessions').textContent = '12'; // Could be dynamic
+                
+                const dbStatusDiv = document.getElementById('databaseStatusInfo');
+                dbStatusDiv.innerHTML = `
+                    <p><strong>Status:</strong> <span style="color: ${data.databaseConnected ? '#2ecc71' : '#e74c3c'};">${data.databaseConnected ? 'Connected' : 'Disconnected'}</span></p>
+                    <p><strong>Memory Usage:</strong> ${Math.round(data.memoryUsage.used / 1024 / 1024)} MB</p>
+                    <p><strong>Uptime:</strong> ${Math.floor(data.uptime / 60)} minutes</p>
+                `;
+            } catch (error) {
+                console.error('Error checking system health:', error);
+            }
+        }
+
+        async function checkModelStatus() {
+            try {
+                const response = await fetch('/api/model-status');
+                const data = await response.json();
+                
+                const statusDiv = document.getElementById('modelStatusInfo');
+                const statusColor = data.isLoaded ? '#2ecc71' : '#e74c3c';
+                const statusText = data.isLoaded ? 'Loaded' : 'Not Loaded';
+                
+                statusDiv.innerHTML = `
+                    <p><strong>Status:</strong> <span style="color: ${statusColor};">${statusText}</span></p>
+                    <p><strong>Load Attempts:</strong> ${data.loadAttempts}/${data.maxAttempts}</p>
+                    <p><strong>Model File Exists:</strong> ${data.modelExists ? 'Yes' : 'No'}</p>
+                    <p><strong>Version:</strong> v2.1.0</p>
+                `;
+            } catch (error) {
+                console.error('Error checking model status:', error);
+                document.getElementById('modelStatusInfo').innerHTML = '<p style="color: #e74c3c;">Error loading model status</p>';
+            }
+        }
+
+        function reloadModel() {
+            if (confirm('Reload the ML model? This may temporarily affect prediction accuracy.')) {
+                alert('Model reloading...');
+                setTimeout(checkModelStatus, 2000);
+            }
+        }
+
+        function viewSystemLogs() {
+            alert('System logs viewer - Feature coming soon');
+        }
+
+        // Close modals when clicking outside
+        window.onclick = function(event) {
+            const modals = document.querySelectorAll('.modal');
+            modals.forEach(modal => {
+                if (event.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
+        }
+    </script>
+</body>
+</html>

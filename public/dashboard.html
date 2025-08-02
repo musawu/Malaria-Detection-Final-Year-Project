@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Anemia Screening - Symptom Checker</title>
+    <title>Medical Screening Dashboard</title>
     <style>
         * {
             margin: 0;
@@ -13,154 +13,297 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #e8f5e8, #f0f9f0);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
+            color: #333;
+        }
+
+        .dashboard-container {
+            max-width: 1400px;
+            margin: 0 auto;
             padding: 20px;
         }
 
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-        }
-
-        .header {
-            background: linear-gradient(135deg, #4caf50, #45a049);
-            color: white;
+        /* Header Section */
+        .dashboard-header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
             padding: 30px;
-            text-align: center;
-            border-radius: 12px;
             margin-bottom: 30px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
-        .header h1 {
-            font-size: 2.2em;
-            margin-bottom: 10px;
-        }
-
-        .step-container {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            padding: 30px;
-            margin-bottom: 20px;
-        }
-
-        .step-header {
+        .welcome-section {
             display: flex;
             align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #e0e0e0;
+            gap: 20px;
         }
 
-        .step-number {
-            background: #4caf50;
-            color: white;
-            width: 40px;
-            height: 40px;
+        .user-avatar {
+            width: 60px;
+            height: 60px;
             border-radius: 50%;
+            background: linear-gradient(135deg, #4caf50, #45a049);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: bold;
-            margin-right: 15px;
-        }
-
-        .step-title {
-            font-size: 1.4em;
-            color: #2e7d32;
+            color: white;
+            font-size: 1.5em;
             font-weight: bold;
         }
 
-        /* Auto-redirect notification */
-        .auto-redirect-notice {
-            background: linear-gradient(135deg, #fff3cd, #ffeaa7);
-            border: 2px solid #ff9800;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-            text-align: center;
-            animation: pulse 2s infinite;
+        .welcome-text h1 {
+            color: #2c3e50;
+            font-size: 2em;
+            margin-bottom: 5px;
         }
 
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(255, 152, 0, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(255, 152, 0, 0); }
-        }
-
-        .auto-redirect-notice h3 {
-            color: #f57c00;
-            margin-bottom: 10px;
-            font-size: 1.3em;
-        }
-
-        .auto-redirect-notice p {
+        .welcome-text p {
             color: #666;
             font-size: 1.1em;
         }
 
-        /* Upload Area Styles */
+        .header-actions {
+            display: flex;
+            gap: 15px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #4caf50, #45a049);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Stats Overview */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 25px;
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-icon {
+            font-size: 2.5em;
+            margin-bottom: 15px;
+        }
+
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 1.1em;
+            margin-bottom: 5px;
+        }
+
+        .stat-sublabel {
+            color: #888;
+            font-size: 0.9em;
+        }
+
+        .stat-tests .stat-number { color: #3498db; }
+        .stat-anemic .stat-number { color: #e74c3c; }
+        .stat-normal .stat-number { color: #2ecc71; }
+        .stat-week .stat-number { color: #f39c12; }
+
+        /* Main Content Grid */
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 2fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        /* Quick Actions Sidebar */
+        .sidebar {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            height: fit-content;
+        }
+
+        .sidebar h3 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+        }
+
+        .quick-action {
+            display: block;
+            padding: 15px;
+            margin-bottom: 15px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            text-decoration: none;
+            color: #333;
+            transition: all 0.3s ease;
+            border-left: 4px solid transparent;
+        }
+
+        .quick-action:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+            border-left-color: #4caf50;
+        }
+
+        .quick-action-icon {
+            font-size: 1.2em;
+            margin-right: 10px;
+        }
+
+        /* Central Upload Section */
+        .upload-center {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .upload-header {
+            margin-bottom: 30px;
+        }
+
+        .upload-header h2 {
+            color: #2c3e50;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        .upload-header p {
+            color: #666;
+            font-size: 1.1em;
+        }
+
         .upload-area {
             border: 3px dashed #4caf50;
-            border-radius: 12px;
-            padding: 40px;
-            text-align: center;
+            border-radius: 20px;
+            padding: 60px 40px;
             cursor: pointer;
             transition: all 0.3s ease;
-            background: #f8fff8;
+            background: linear-gradient(135deg, #f8fff8, #f0f9f0);
             position: relative;
+            margin-bottom: 30px;
         }
 
         .upload-area:hover {
             border-color: #45a049;
-            background: #f0f9f0;
-            transform: translateY(-2px);
+            background: linear-gradient(135deg, #f0f9f0, #e8f5e8);
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(76, 175, 80, 0.2);
         }
 
         .upload-area.dragover {
             border-color: #2e7d32;
-            background: #e8f5e8;
+            background: linear-gradient(135deg, #e8f5e8, #e0f2e0);
         }
 
         .upload-icon {
-            font-size: 3em;
+            font-size: 4em;
             color: #4caf50;
-            margin-bottom: 15px;
+            margin-bottom: 20px;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
         }
 
         .upload-text {
-            font-size: 1.2em;
+            font-size: 1.4em;
             color: #2e7d32;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
             font-weight: bold;
         }
 
         .upload-subtext {
             color: #666;
+            font-size: 1em;
+            margin-bottom: 20px;
+        }
+
+        .upload-features {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .feature-item {
+            background: rgba(76, 175, 80, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .feature-item-icon {
+            font-size: 1.5em;
+            color: #4caf50;
+            margin-bottom: 8px;
+        }
+
+        .feature-item-text {
             font-size: 0.9em;
+            color: #2e7d32;
+            font-weight: 600;
         }
 
         #eyelidInput {
             display: none;
         }
 
-        .image-preview {
-            max-width: 100%;
-            max-height: 300px;
-            border-radius: 8px;
-            margin-top: 15px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
-
         .analyze-btn {
             background: linear-gradient(135deg, #4caf50, #45a049);
             color: white;
-            padding: 15px 30px;
+            padding: 18px 40px;
             border: none;
-            border-radius: 8px;
-            font-size: 1.1em;
+            border-radius: 12px;
+            font-size: 1.2em;
             font-weight: bold;
             cursor: pointer;
             transition: all 0.3s ease;
@@ -169,8 +312,8 @@
         }
 
         .analyze-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(76, 175, 80, 0.3);
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(76, 175, 80, 0.3);
         }
 
         .analyze-btn:disabled {
@@ -180,15 +323,139 @@
             box-shadow: none;
         }
 
-        .loading-spinner {
-            display: none;
+        /* Activity History */
+        .activity-section {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            height: fit-content;
+        }
+
+        .activity-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+
+        .activity-header h3 {
+            color: #2c3e50;
+            font-size: 1.3em;
+        }
+
+        .activity-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            margin-bottom: 15px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border-left: 4px solid #e0e0e0;
+            transition: all 0.3s ease;
+        }
+
+        .activity-item:hover {
+            background: #e9ecef;
+            border-left-color: #4caf50;
+        }
+
+        .activity-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            color: white;
+            font-weight: bold;
+        }
+
+        .activity-anemic {
+            background: #e74c3c;
+            border-left-color: #e74c3c;
+        }
+
+        .activity-normal {
+            background: #2ecc71;
+            border-left-color: #2ecc71;
+        }
+
+        .activity-anemic .activity-icon {
+            background: #e74c3c;
+        }
+
+        .activity-normal .activity-icon {
+            background: #2ecc71;
+        }
+
+        .activity-content {
+            flex: 1;
+        }
+
+        .activity-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .activity-time {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .activity-confidence {
+            font-size: 0.85em;
+            color: #888;
+        }
+
+        /* Recent Tests Chart */
+        .chart-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+
+        .chart-title {
+            color: #2c3e50;
+            font-size: 1.5em;
+            font-weight: 600;
+        }
+
+        .chart-canvas {
+            width: 100%;
+            height: 300px;
+        }
+
+        /* Loading States */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .spinner {
             border: 3px solid #f3f3f3;
             border-top: 3px solid #4caf50;
             border-radius: 50%;
             width: 30px;
             height: 30px;
             animation: spin 1s linear infinite;
-            margin: 20px auto;
+            margin-right: 15px;
         }
 
         @keyframes spin {
@@ -196,331 +463,512 @@
             100% { transform: rotate(360deg); }
         }
 
-        .result-container {
-            display: none;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            padding: 30px;
-            margin-top: 20px;
-            text-align: center;
-        }
-
-        .result-positive {
-            border-left: 5px solid #d32f2f;
-        }
-
-        .result-negative {
+        /* Health Tips */
+        .health-tips {
+            background: linear-gradient(135deg, #e8f5e8, #f0f9f0);
+            border-radius: 20px;
+            padding: 25px;
+            margin-bottom: 30px;
             border-left: 5px solid #4caf50;
         }
 
-        .result-title {
-            font-size: 1.5em;
-            font-weight: bold;
-            margin-bottom: 15px;
-        }
-
-        .result-positive .result-title {
-            color: #d32f2f;
-        }
-
-        .result-negative .result-title {
-            color: #4caf50;
-        }
-
-        .confidence-display {
-            font-size: 1.2em;
-            margin-bottom: 20px;
-            color: #666;
-        }
-
-        .next-steps {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            margin-top: 20px;
-        }
-
-        .next-steps h3 {
+        .health-tips h3 {
             color: #2e7d32;
             margin-bottom: 15px;
+            font-size: 1.3em;
         }
 
-        .action-buttons {
-            display: flex;
+        .tips-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 15px;
-            justify-content: center;
-            flex-wrap: wrap;
-            margin-top: 20px;
         }
 
-        .action-btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
-            font-weight: bold;
-            text-decoration: none;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: inline-block;
-        }
-
-        .btn-primary {
-            background: #4caf50;
-            color: white;
-        }
-
-        .btn-secondary {
-            background: #2196f3;
-            color: white;
-        }
-
-        .btn-warning {
-            background: #ff9800;
-            color: white;
-        }
-
-        .action-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-        }
-
-        .error-message {
-            background: #ffebee;
-            color: #d32f2f;
+        .tip-item {
+            background: rgba(255, 255, 255, 0.7);
             padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
-            border-left: 5px solid #d32f2f;
-        }
-
-        .back-link {
-            display: inline-block;
-            margin-bottom: 20px;
-            color: #4caf50;
-            text-decoration: none;
-            font-weight: bold;
-        }
-
-        .back-link:hover {
-            text-decoration: underline;
-        }
-
-        /* Redirect countdown */
-        .redirect-countdown {
-            background: #e8f5e8;
-            border: 2px solid #4caf50;
             border-radius: 10px;
-            padding: 20px;
-            margin-top: 20px;
-            text-align: center;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
         }
 
-        .countdown-number {
-            font-size: 2em;
-            font-weight: bold;
+        .tip-icon {
+            font-size: 1.2em;
+            color: #4caf50;
+            margin-top: 2px;
+        }
+
+        .tip-text {
+            font-size: 0.95em;
             color: #2e7d32;
-            margin: 10px 0;
+            line-height: 1.4;
         }
 
-        .cancel-redirect {
-            background: #6c757d;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            margin-top: 15px;
-        }
-
-        .cancel-redirect:hover {
-            background: #5a6268;
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .main-content {
+                grid-template-columns: 1fr 1fr;
+            }
+            
+            .activity-section {
+                grid-column: 1 / -1;
+            }
         }
 
         @media (max-width: 768px) {
-            .container {
+            .dashboard-container {
                 padding: 10px;
             }
             
-            .action-buttons {
-                flex-direction: column;
+            .main-content {
+                grid-template-columns: 1fr;
             }
             
-            .action-btn {
-                width: 100%;
+            .dashboard-header {
+                flex-direction: column;
+                gap: 20px;
+                text-align: center;
             }
+            
+            .stats-grid {
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            }
+            
+            .upload-features {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Notification badges */
+        .notification-badge {
+            background: #e74c3c;
+            color: white;
+            border-radius: 50%;
+            padding: 2px 6px;
+            font-size: 0.8em;
+            margin-left: 5px;
+        }
+
+        /* Trend indicators */
+        .trend-up {
+            color: #2ecc71;
+        }
+
+        .trend-down {
+            color: #e74c3c;
+        }
+
+        .trend-stable {
+            color: #f39c12;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <a href="/dashboard" class="back-link">← Back to Dashboard</a>
-        
-        <div class="header">
-            <h1>Anemia Screening Test</h1>
-            <p>Upload an image of your eyelid for AI analysis</p>
-        </div>
-
-        <!-- Auto-redirect notification (hidden by default) -->
-        <div id="autoRedirectNotice" class="auto-redirect-notice" style="display: none;">
-            <h3>⚠️ Anemia Detected - Proceeding to Symptom Assessment</h3>
-            <p>Since anemia was detected, you'll be automatically directed to the comprehensive symptom checker for a complete health assessment.</p>
-        </div>
-
-        <!-- Step 1: Image Upload -->
-        <div class="step-container">
-            <div class="step-header">
-                <div class="step-number">1</div>
-                <div class="step-title">Upload Eyelid Image</div>
-            </div>
-            
-            <div class="upload-area" id="uploadArea" onclick="document.getElementById('eyelidInput').click();">
-                <div class="upload-icon">📷</div>
-                <div class="upload-text">Click to upload eyelid image</div>
-                <div class="upload-subtext">or drag and drop your image here</div>
-                <input type="file" id="eyelidInput" accept="image/*">
-                <img id="imagePreview" class="image-preview" style="display: none;">
-            </div>
-            
-            <button id="analyzeBtn" class="analyze-btn" disabled onclick="analyzeImage()">
-                Analyze Image
-            </button>
-            
-            <div class="loading-spinner" id="loadingSpinner"></div>
-            
-            <div id="errorMessage" class="error-message" style="display: none;"></div>
-        </div>
-
-        <!-- Results Container -->
-        <div id="resultContainer" class="result-container">
-            <div class="result-title" id="resultTitle"></div>
-            <div class="confidence-display" id="confidenceDisplay"></div>
-            
-            <div class="next-steps">
-                <h3>Recommended Next Steps:</h3>
-                <div id="nextStepsContent"></div>
-                
-                <div class="action-buttons">
-                    <a href="/symptoms" class="action-btn btn-warning" id="symptomsBtn" style="display: none;">
-                        Check Symptoms
-                    </a>
-                    <a href="/send-assessment" class="action-btn btn-secondary">
-                        Consult Doctor
-                    </a>
-                    <button class="action-btn btn-primary" onclick="location.reload()">
-                        Take Another Test
-                    </button>
-                    <a href="/history" class="action-btn btn-primary">
-                        View History
-                    </a>
+    <div class="dashboard-container">
+        <!-- Header Section -->
+        <div class="dashboard-header">
+            <div class="welcome-section">
+                <div class="user-avatar" id="userAvatar">U</div>
+                <div class="welcome-text">
+                    <h1>Welcome back, <span id="userName">User</span>!</h1>
+                    <p>Monitor your health with AI-powered anemia screening</p>
                 </div>
             </div>
+            <div class="header-actions">
+                <a href="/history" class="btn btn-primary">📊 Full History</a>
+                <form action="/logout" method="POST" style="display: inline;">
+                    <button type="submit" class="btn btn-danger">Logout</button>
+                </form>
+            </div>
+        </div>
 
-            <!-- Redirect countdown (hidden by default) -->
-            <div id="redirectCountdown" class="redirect-countdown" style="display: none;">
-                <h3>🔄 Automatic Redirect</h3>
-                <p>Redirecting to comprehensive symptom assessment in:</p>
-                <div class="countdown-number" id="countdownNumber">5</div>
-                <p>This will help us provide a complete health evaluation.</p>
-                <button class="cancel-redirect" onclick="cancelRedirect()">
-                    Cancel Auto-Redirect
+        <!-- Statistics Overview -->
+        <div class="stats-grid">
+            <div class="stat-card stat-tests">
+                <div class="stat-icon">🩺</div>
+                <div class="stat-number" id="totalTests">-</div>
+                <div class="stat-label">Total Tests</div>
+                <div class="stat-sublabel">All time screenings</div>
+            </div>
+            <div class="stat-card stat-anemic">
+                <div class="stat-icon">⚠️</div>
+                <div class="stat-number" id="anemicResults">-</div>
+                <div class="stat-label">Anemic Results</div>
+                <div class="stat-sublabel">Positive detections</div>
+            </div>
+            <div class="stat-card stat-normal">
+                <div class="stat-icon">✅</div>
+                <div class="stat-number" id="normalResults">-</div>
+                <div class="stat-label">Normal Results</div>
+                <div class="stat-sublabel">Negative screenings</div>
+            </div>
+            <div class="stat-card stat-week">
+                <div class="stat-icon">📅</div>
+                <div class="stat-number" id="weekTests">-</div>
+                <div class="stat-label">This Week</div>
+                <div class="stat-sublabel">Recent activity <span id="trend" class="trend-stable">→</span></div>
+            </div>
+        </div>
+
+        <!-- Main Content Grid -->
+        <div class="main-content">
+            <!-- Quick Actions Sidebar -->
+            <div class="sidebar">
+                <h3>🚀 Quick Actions</h3>
+                <a href="/symptoms" class="quick-action">
+                    <span class="quick-action-icon">📋</span>
+                    Symptom Checker
+                </a>
+                <a href="/send-assessment" class="quick-action">
+                    <span class="quick-action-icon">👨‍⚕️</span>
+                    Consult Doctor
+                </a>
+                <a href="/history" class="quick-action">
+                    <span class="quick-action-icon">📊</span>
+                    View Full History
+                </a>
+                <a href="#" class="quick-action" onclick="exportResults()">
+                    <span class="quick-action-icon">📤</span>
+                    Export Results
+                </a>
+                <a href="#" class="quick-action" onclick="scheduleReminder()">
+                    <span class="quick-action-icon">⏰</span>
+                    Set Reminder
+                </a>
+            </div>
+
+            <!-- Central Upload Section -->
+            <div class="upload-center">
+                <div class="upload-header">
+                    <h2>🩺 Anemia Screening Test</h2>
+                    <p>Upload an image of your eyelid for AI-powered analysis</p>
+                </div>
+                
+                <div class="upload-area" id="uploadArea" onclick="document.getElementById('eyelidInput').click();">
+                    <div class="upload-icon">📷</div>
+                    <div class="upload-text">Click to upload eyelid image</div>
+                    <div class="upload-subtext">or drag and drop your image here</div>
+                    <input type="file" id="eyelidInput" accept="image/*">
+                </div>
+
+                <div class="upload-features">
+                    <div class="feature-item">
+                        <div class="feature-item-icon">🤖</div>
+                        <div class="feature-item-text">AI Analysis</div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-item-icon">⚡</div>
+                        <div class="feature-item-text">Instant Results</div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-item-icon">🔒</div>
+                        <div class="feature-item-text">Secure & Private</div>
+                    </div>
+                </div>
+                
+                <button id="analyzeBtn" class="analyze-btn" disabled onclick="analyzeImage()">
+                    Analyze Image
                 </button>
             </div>
+
+            <!-- Recent Activity -->
+            <div class="activity-section">
+                <div class="activity-header">
+                    <h3>📱 Recent Activity</h3>
+                </div>
+                <div id="recentActivity">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Loading activity...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Health Tips Section -->
+        <div class="health-tips">
+            <h3>💡 Health Tips for Anemia Prevention</h3>
+            <div class="tips-grid">
+                <div class="tip-item">
+                    <div class="tip-icon">🥬</div>
+                    <div class="tip-text">Eat iron-rich foods like spinach, beans, and lean meats</div>
+                </div>
+                <div class="tip-item">
+                    <div class="tip-icon">🍊</div>
+                    <div class="tip-text">Consume vitamin C with iron to enhance absorption</div>
+                </div>
+                <div class="tip-item">
+                    <div class="tip-icon">🏃‍♀️</div>
+                    <div class="tip-text">Regular exercise improves blood circulation</div>
+                </div>
+                <div class="tip-item">
+                    <div class="tip-icon">💊</div>
+                    <div class="tip-text">Consider iron supplements if recommended by your doctor</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Tests Trend Chart -->
+        <div class="chart-container">
+            <div class="chart-header">
+                <h3 class="chart-title">📈 Testing Trend (Last 7 Days)</h3>
+                <button onclick="refreshChart()" class="btn btn-primary">🔄 Refresh</button>
+            </div>
+            <canvas id="trendChart" class="chart-canvas"></canvas>
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script>
         let selectedFile = null;
-        let currentResult = null;
-        let redirectTimer = null;
-        let countdownInterval = null;
+        let trendChart = null;
 
-        // File input change handler
-        document.getElementById('eyelidInput').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                handleFileSelection(file);
-            }
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            loadUserData();
+            loadPatientStats();
+            loadRecentActivity();
+            initializeChart();
+            setupFileUpload();
+            console.log('Enhanced dashboard loaded');
         });
 
-        // Drag and drop handlers
-        const uploadArea = document.getElementById('uploadArea');
+        // Load user data
+        function loadUserData() {
+            // This would typically come from session/API
+            const username = 'Current User'; // Replace with actual session data
+            document.getElementById('userName').textContent = username;
+            document.getElementById('userAvatar').textContent = username.charAt(0).toUpperCase();
+        }
 
-        uploadArea.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
-        });
-
-        uploadArea.addEventListener('dragleave', function(e) {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-        });
-
-        uploadArea.addEventListener('drop', function(e) {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-            
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                const file = files[0];
-                if (file.type.startsWith('image/')) {
-                    handleFileSelection(file);
+        // Load patient statistics
+        async function loadPatientStats() {
+            try {
+                const response = await fetch('/api/patient-stats');
+                const stats = await response.json();
+                
+                document.getElementById('totalTests').textContent = stats.totalTests || 0;
+                document.getElementById('anemicResults').textContent = stats.anemicResults || 0;
+                document.getElementById('normalResults').textContent = stats.normalResults || 0;
+                document.getElementById('weekTests').textContent = stats.thisWeekTests || 0;
+                
+                // Update trend indicator
+                const trendElement = document.getElementById('trend');
+                if (stats.trend === 'improving') {
+                    trendElement.textContent = '↗️';
+                    trendElement.className = 'trend-up';
+                } else if (stats.trend === 'declining') {
+                    trendElement.textContent = '↘️';
+                    trendElement.className = 'trend-down';
                 } else {
-                    showError('Please select an image file (JPEG, PNG, etc.)');
+                    trendElement.textContent = '→';
+                    trendElement.className = 'trend-stable';
                 }
+                
+            } catch (error) {
+                console.error('Error loading patient stats:', error);
             }
-        });
+        }
+
+        // Load recent activity
+        async function loadRecentActivity() {
+            try {
+                const response = await fetch('/api/patient-history');
+                const results = await response.json();
+                
+                const activityContainer = document.getElementById('recentActivity');
+                
+                if (results.length === 0) {
+                    activityContainer.innerHTML = `
+                        <div style="text-align: center; padding: 40px; color: #666;">
+                            <div style="font-size: 3em; margin-bottom: 15px;">🩺</div>
+                            <p>No tests yet</p>
+                            <p style="font-size: 0.9em; margin-top: 5px;">Upload your first eyelid image to get started!</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                activityContainer.innerHTML = results.slice(0, 5).map(result => {
+                    const isAnemic = result.prediction === 'Anemic';
+                    const date = new Date(result.timestamp);
+                    const timeAgo = getTimeAgo(date);
+                    
+                    return `
+                        <div class="activity-item ${isAnemic ? 'activity-anemic' : 'activity-normal'}">
+                            <div class="activity-icon">
+                                ${isAnemic ? '⚠️' : '✅'}
+                            </div>
+                            <div class="activity-content">
+                                <div class="activity-title">
+                                    ${result.prediction} Detection
+                                </div>
+                                <div class="activity-time">${timeAgo}</div>
+                                <div class="activity-confidence">
+                                    Confidence: ${Math.round(result.confidence * 100)}%
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+            } catch (error) {
+                console.error('Error loading recent activity:', error);
+                document.getElementById('recentActivity').innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: #e74c3c;">
+                        <p>Error loading activity</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Initialize trend chart
+        function initializeChart() {
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            
+            // Generate sample data for the last 7 days
+            const labels = [];
+            const data = [];
+            const today = new Date();
+            
+            for (let i = 6; i >= 0; i--) {
+                const date = new Date(today);
+                date.setDate(date.getDate() - i);
+                labels.push(date.toLocaleDateString('en-US', { weekday: 'short' }));
+                data.push(Math.floor(Math.random() * 3)); // Random data for demo
+            }
+            
+            trendChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Tests Performed',
+                        data: data,
+                        borderColor: '#4caf50',
+                        backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: '#4caf50',
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 2,
+                        pointRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Setup file upload
+        function setupFileUpload() {
+            const uploadArea = document.getElementById('uploadArea');
+            const fileInput = document.getElementById('eyelidInput');
+
+            // File input change handler
+            fileInput.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    handleFileSelection(file);
+                }
+            });
+
+            // Drag and drop handlers
+            uploadArea.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+
+            uploadArea.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+            });
+
+            uploadArea.addEventListener('drop', function(e) {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    const file = files[0];
+                    if (file.type.startsWith('image/')) {
+                        handleFileSelection(file);
+                    } else {
+                        alert('Please select an image file');
+                    }
+                }
+            });
+        }
 
         function handleFileSelection(file) {
             selectedFile = file;
             
             // Validate file
             if (!file.type.startsWith('image/')) {
-                showError('Please select an image file (JPEG, PNG, etc.)');
+                alert('Please select an image file (JPEG, PNG, etc.)');
                 return;
             }
             
             if (file.size > 10 * 1024 * 1024) { // 10MB limit
-                showError('File size too large. Please select an image under 10MB.');
+                alert('File size too large. Please select an image under 10MB.');
                 return;
             }
             
             // Show preview
             const reader = new FileReader();
             reader.onload = function(e) {
-                const preview = document.getElementById('imagePreview');
-                preview.src = e.target.result;
-                preview.style.display = 'block';
-                
-                // Update upload area
+                // Update upload area with preview
                 const uploadArea = document.getElementById('uploadArea');
                 uploadArea.innerHTML = `
-                    <div class="upload-text">Image selected: ${file.name}</div>
-                    <img id="imagePreview" class="image-preview" src="${e.target.result}">
-                    <div class="upload-subtext">Click to select a different image</div>
+                    <div class="upload-icon">✅</div>
+                    <div class="upload-text">Image Ready for Analysis</div>
+                    <div class="upload-subtext">${file.name}</div>
+                    <img src="${e.target.result}" style="max-width: 200px; max-height: 150px; border-radius: 8px; margin-top: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.1);">
+                    <div style="margin-top: 10px; font-size: 0.9em; color: #666;">Click to select a different image</div>
                 `;
                 
                 // Enable analyze button
                 document.getElementById('analyzeBtn').disabled = false;
-                hideError();
             };
             reader.readAsDataURL(file);
         }
 
         async function analyzeImage() {
             if (!selectedFile) {
-                showError('Please select an image first.');
+                alert('Please select an image first.');
                 return;
             }
             
             const analyzeBtn = document.getElementById('analyzeBtn');
-            const loadingSpinner = document.getElementById('loadingSpinner');
             
             // Show loading state
             analyzeBtn.disabled = true;
-            analyzeBtn.textContent = 'Analyzing...';
-            loadingSpinner.style.display = 'block';
-            hideError();
+            analyzeBtn.innerHTML = '<div class="spinner" style="display: inline-block; margin-right: 10px;"></div>Analyzing...';
             
             try {
                 const formData = new FormData();
@@ -538,165 +986,230 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    displayResult(data);
+                    // Show success and redirect to results
+                    showAnalysisSuccess(data);
+                    
+                    // Refresh dashboard data
+                    setTimeout(() => {
+                        loadPatientStats();
+                        loadRecentActivity();
+                        refreshChart();
+                    }, 1000);
+                    
                 } else {
                     throw new Error(data.error || 'Prediction failed');
                 }
                 
             } catch (error) {
                 console.error('Prediction error:', error);
-                showError(`Analysis failed: ${error.message}. Please try again.`);
+                alert(`Analysis failed: ${error.message}. Please try again.`);
             } finally {
-                // Reset loading state
+                // Reset button
                 analyzeBtn.disabled = false;
                 analyzeBtn.textContent = 'Analyze Image';
-                loadingSpinner.style.display = 'none';
+                
+                // Reset upload area
+                resetUploadArea();
             }
         }
 
-        function displayResult(data) {
-            currentResult = data;
+        function showAnalysisSuccess(data) {
+            const isAnemic = data.prediction === 'Anemic';
             
-            const resultContainer = document.getElementById('resultContainer');
-            const resultTitle = document.getElementById('resultTitle');
-            const confidenceDisplay = document.getElementById('confidenceDisplay');
-            const nextStepsContent = document.getElementById('nextStepsContent');
-            const symptomsBtn = document.getElementById('symptomsBtn');
-            const autoRedirectNotice = document.getElementById('autoRedirectNotice');
+            // Create success notification
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: ${isAnemic ? '#ffebee' : '#e8f5e8'};
+                border: 2px solid ${isAnemic ? '#e74c3c' : '#4caf50'};
+                border-radius: 12px;
+                padding: 20px;
+                max-width: 350px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+                z-index: 1000;
+                animation: slideIn 0.3s ease;
+            `;
             
-            // Set result styling
-            if (data.prediction === 'Anemic') {
-                resultContainer.className = 'result-container result-positive';
-                resultTitle.textContent = '⚠️ Possible Anemia Detected';
-                nextStepsContent.innerHTML = `
-                    <p>The AI analysis suggests possible signs of anemia. This is not a medical diagnosis.</p>
-                    <p><strong>Recommended actions:</strong></p>
-                    <ul style="text-align: left; margin-top: 10px;">
-                        <li>Complete the comprehensive symptom questionnaire</li>
-                        <li>Consult with a healthcare professional</li>
-                        <li>Consider getting a blood test for confirmation</li>
-                        <li>Monitor your symptoms and energy levels</li>
-                    </ul>
-                `;
-                symptomsBtn.style.display = 'inline-block';
-                
-                // Show auto-redirect notice
-                autoRedirectNotice.style.display = 'block';
-                
-                // Store the result for the symptoms page
-                sessionStorage.setItem('anemiaDetectionResult', JSON.stringify({
-                    prediction: data.prediction,
-                    confidence: data.confidence,
-                    timestamp: new Date().toISOString(),
-                    autoRedirected: true
-                }));
-                
-                // Start auto-redirect countdown
-                startAutoRedirect();
-                
-            } else {
-                resultContainer.className = 'result-container result-negative';
-                resultTitle.textContent = '✅ No Anemia Detected';
-                nextStepsContent.innerHTML = `
-                    <p>The AI analysis suggests no obvious signs of anemia in the image.</p>
-                    <p><strong>Remember:</strong></p>
-                    <ul style="text-align: left; margin-top: 10px;">
-                        <li>This is a screening tool, not a medical diagnosis</li>
-                        <li>Consult a doctor if you have symptoms</li>
-                        <li>Regular health check-ups are recommended</li>
-                        <li>Maintain a healthy diet rich in iron</li>
-                    </ul>
-                `;
-                symptomsBtn.style.display = 'none';
-            }
+            notification.innerHTML = `
+                <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                    <div style="font-size: 1.5em; margin-right: 10px;">
+                        ${isAnemic ? '⚠️' : '✅'}
+                    </div>
+                    <div>
+                        <strong style="color: ${isAnemic ? '#d32f2f' : '#2e7d32'};">
+                            Analysis Complete!
+                        </strong>
+                    </div>
+                </div>
+                <p style="margin: 10px 0; color: #666;">
+                    Result: <strong>${data.prediction}</strong><br>
+                    Confidence: ${Math.round(data.confidence * 100)}%
+                </p>
+                <div style="margin-top: 15px;">
+                    <button onclick="window.location.href='/history'" style="
+                        background: #4caf50; 
+                        color: white; 
+                        border: none; 
+                        padding: 8px 16px; 
+                        border-radius: 6px; 
+                        cursor: pointer;
+                        margin-right: 10px;
+                    ">View Details</button>
+                    <button onclick="this.parentElement.parentElement.remove()" style="
+                        background: #6c757d; 
+                        color: white; 
+                        border: none; 
+                        padding: 8px 16px; 
+                        border-radius: 6px; 
+                        cursor: pointer;
+                    ">Close</button>
+                </div>
+            `;
             
-            confidenceDisplay.textContent = `Confidence: 80%`;
+            document.body.appendChild(notification);
             
-            if (data.usingDefaultPrediction) {
-                confidenceDisplay.innerHTML += '<br><small style="color: #ff9800;">⚠️ Using default prediction (AI model not loaded)</small>';
-            }
-            
-            // Show result container
-            resultContainer.style.display = 'block';
-            
-            // Scroll to results
-            resultContainer.scrollIntoView({ behavior: 'smooth' });
-        }
-
-        function startAutoRedirect() {
-            const redirectCountdown = document.getElementById('redirectCountdown');
-            const countdownNumber = document.getElementById('countdownNumber');
-            
-            redirectCountdown.style.display = 'block';
-            
-            let seconds = 5;
-            countdownNumber.textContent = seconds;
-            
-            countdownInterval = setInterval(() => {
-                seconds--;
-                countdownNumber.textContent = seconds;
-                
-                if (seconds <= 0) {
-                    clearInterval(countdownInterval);
-                    // Redirect to symptoms page
-                    window.location.href = '/symptoms';
+            // Auto-remove after 10 seconds
+            setTimeout(() => {
+                if (notification.parentElement) {
+                    notification.remove();
                 }
-            }, 1000);
-        }
-
-        function cancelRedirect() {
-            if (countdownInterval) {
-                clearInterval(countdownInterval);
-                countdownInterval = null;
+            }, 10000);
+            
+            // If anemic, suggest next steps
+            if (isAnemic) {
+                setTimeout(() => {
+                    const followUp = confirm('Anemia detected! Would you like to complete a comprehensive symptom assessment?');
+                    if (followUp) {
+                        window.location.href = '/symptoms';
+                    }
+                }, 2000);
             }
+        }
+
+        function resetUploadArea() {
+            selectedFile = null;
+            document.getElementById('analyzeBtn').disabled = true;
+            document.getElementById('uploadArea').innerHTML = `
+                <div class="upload-icon">📷</div>
+                <div class="upload-text">Click to upload eyelid image</div>
+                <div class="upload-subtext">or drag and drop your image here</div>
+                <input type="file" id="eyelidInput" accept="image/*" style="display: none;">
+            `;
             
-            document.getElementById('redirectCountdown').style.display = 'none';
-            
-            // Show manual option
-            document.getElementById('symptomsBtn').style.display = 'inline-block';
+            // Re-setup file input
+            setupFileUpload();
         }
 
-        function showError(message) {
-            const errorDiv = document.getElementById('errorMessage');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-        }
-
-        function hideError() {
-            document.getElementById('errorMessage').style.display = 'none';
-        }
-
-        // Check if redirected from anemia detection
-        document.addEventListener('DOMContentLoaded', function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('from') === 'anemia-detection') {
-                // Show notification that user was redirected
-                const notice = document.createElement('div');
-                notice.className = 'auto-redirect-notice';
-                notice.innerHTML = `
-                    <h3>🩺 Continuing from Anemia Detection</h3>
-                    <p>Since anemia was detected in your previous test, please complete this comprehensive symptom assessment.</p>
-                `;
-                document.querySelector('.container').insertBefore(notice, document.querySelector('.step-container'));
+        function refreshChart() {
+            if (trendChart) {
+                // Update with new data (in real app, fetch from API)
+                const newData = [];
+                for (let i = 0; i < 7; i++) {
+                    newData.push(Math.floor(Math.random() * 3));
+                }
+                trendChart.data.datasets[0].data = newData;
+                trendChart.update();
             }
-            
-            console.log('Enhanced symptom checker page loaded');
-        });
+        }
 
-        // Handle page visibility change to pause/resume countdown
-        document.addEventListener('visibilitychange', function() {
-            if (document.hidden && countdownInterval) {
-                // Page is hidden, pause countdown
-                clearInterval(countdownInterval);
-            } else if (!document.hidden && currentResult && currentResult.prediction === 'Anemic') {
-                // Page is visible again and we had anemia detected, resume if not cancelled
-                const redirectCountdown = document.getElementById('redirectCountdown');
-                if (redirectCountdown.style.display !== 'none') {
-                    // Resume countdown with remaining time
-                    startAutoRedirect();
+        // Utility functions
+        function getTimeAgo(date) {
+            const now = new Date();
+            const diffInSeconds = Math.floor((now - date) / 1000);
+            
+            if (diffInSeconds < 60) return 'Just now';
+            if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
+            if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+            if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)} days ago`;
+            
+            return date.toLocaleDateString();
+        }
+
+        function exportResults() {
+            // This would trigger a download of user's test results
+            alert('Feature coming soon! Your results will be exported as a PDF report.');
+        }
+
+        function scheduleReminder() {
+            // This would open a reminder scheduling dialog
+            const frequency = prompt('How often would you like to be reminded to take a test? (daily/weekly/monthly)');
+            if (frequency) {
+                alert(`Reminder set for ${frequency} notifications!`);
+            }
+        }
+
+        // Add CSS animation for notifications
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
                 }
             }
-        });
+        `;
+        document.head.appendChild(style);
+
+        // Auto-refresh dashboard every 5 minutes
+        setInterval(() => {
+            loadPatientStats();
+            loadRecentActivity();
+        }, 300000);
+
+        // Welcome message for new users
+        setTimeout(() => {
+            if (document.getElementById('totalTests').textContent === '0') {
+                const welcomeDialog = document.createElement('div');
+                welcomeDialog.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0,0,0,0.5);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 2000;
+                `;
+                
+                welcomeDialog.innerHTML = `
+                    <div style="
+                        background: white;
+                        border-radius: 20px;
+                        padding: 40px;
+                        max-width: 500px;
+                        text-align: center;
+                        box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+                    ">
+                        <div style="font-size: 4em; margin-bottom: 20px;">🩺</div>
+                        <h2 style="color: #2c3e50; margin-bottom: 15px;">Welcome to Medical Screening!</h2>
+                        <p style="color: #666; margin-bottom: 25px; line-height: 1.6;">
+                            Get started by uploading an image of your eyelid for AI-powered anemia screening. 
+                            It's quick, easy, and helps monitor your health!
+                        </p>
+                        <button onclick="this.parentElement.parentElement.remove()" style="
+                            background: linear-gradient(135deg, #4caf50, #45a049);
+                            color: white;
+                            border: none;
+                            padding: 15px 30px;
+                            border-radius: 10px;
+                            font-size: 1.1em;
+                            font-weight: bold;
+                            cursor: pointer;
+                        ">Get Started</button>
+                    </div>
+                `;
+                
+                document.body.appendChild(welcomeDialog);
+            }
+        }, 2000);
     </script>
 </body>
 </html>
